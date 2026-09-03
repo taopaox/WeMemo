@@ -1,0 +1,5 @@
+pymem
+yara-python
+pycryptodome
+pefile
+psutil
