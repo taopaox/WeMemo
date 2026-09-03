@@ -3,7 +3,10 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 
 interface WorkerParams {
-    modelPath: string
+    engine?: 'sensevoice' | 'whisper'
+    modelPath?: string
+    encoderPath?: string
+    decoderPath?: string
     tokensPath: string
     wavData: Buffer | Uint8Array | { type: 'Buffer'; data: number[] }
     sampleRate: number
@@ -190,7 +193,16 @@ async function run() {
             return;
         }
 
-        const { modelPath, tokensPath, wavData: rawWavData, sampleRate, languages } = params
+        const {
+            engine = params.encoderPath ? 'whisper' : 'sensevoice',
+            modelPath,
+            encoderPath,
+            decoderPath,
+            tokensPath,
+            wavData: rawWavData,
+            sampleRate,
+            languages
+        } = params
         const wavData = normalizeBuffer(rawWavData);
         // 确保有有效的语言列表，默认只允许中文
         let allowedLanguages = languages || ['zh']
@@ -198,20 +210,32 @@ async function run() {
             allowedLanguages = ['zh']
         }
 
-        
-
-        // 1. 初始化识别器 (SenseVoiceSmall)
-        const recognizerConfig = {
-            modelConfig: {
-                senseVoice: {
-                    model: modelPath,
-                    useInverseTextNormalization: 1
-                },
-                tokens: tokensPath,
-                numThreads: 2,
-                debug: 0
+        const recognizerConfig = engine === 'whisper'
+            ? {
+                modelConfig: {
+                    whisper: {
+                        encoder: encoderPath,
+                        decoder: decoderPath,
+                        language: '',
+                        task: 'transcribe',
+                        tailPaddings: -1
+                    },
+                    tokens: tokensPath,
+                    numThreads: 2,
+                    debug: 0
+                }
             }
-        }
+            : {
+                modelConfig: {
+                    senseVoice: {
+                        model: modelPath,
+                        useInverseTextNormalization: 1
+                    },
+                    tokens: tokensPath,
+                    numThreads: 2,
+                    debug: 0
+                }
+            }
         const recognizer = new sherpa.OfflineRecognizer(recognizerConfig)
 
         // 2. 处理音频数据 (全量识别)
@@ -228,14 +252,14 @@ async function run() {
 
         
 
-        // 3. 检查语言是否在白名单中
-        if (isLanguageAllowed(result, allowedLanguages)) {
-            const processedText = richTranscribePostProcess(result.text)
-            
+        const processedText = engine === 'sensevoice'
+            ? richTranscribePostProcess(result.text)
+            : String(result.text || '').trim()
+
+        if (engine !== 'sensevoice' || isLanguageAllowed(result, allowedLanguages)) {
             emit({ type: 'final', text: processedText })
             if (isForkProcess) process.exit(0)
         } else {
-            
             emit({ type: 'final', text: '' })
             if (isForkProcess) process.exit(0)
         }

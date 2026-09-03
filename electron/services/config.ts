@@ -212,7 +212,7 @@ export class ConfigService {
       logEnabled: false,
       silentStartup: false,
       llmModelPath: '',
-      whisperModelName: 'base',
+      whisperModelName: 'sensevoice',
       whisperModelDir: '',
       whisperDownloadSource: 'tsinghua',
       autoTranscribeVoice: false,

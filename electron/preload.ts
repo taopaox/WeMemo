@@ -547,11 +547,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   whisper: {
-    downloadModel: () =>
-      ipcRenderer.invoke('whisper:downloadModel'),
-    getModelStatus: () =>
-      ipcRenderer.invoke('whisper:getModelStatus'),
-    onDownloadProgress: (callback: (payload: { modelName: string; downloadedBytes: number; totalBytes?: number; percent?: number }) => void) => {
+    downloadModel: (modelId?: string) =>
+      ipcRenderer.invoke('whisper:downloadModel', modelId),
+    getModelStatus: (modelId?: string) =>
+      ipcRenderer.invoke('whisper:getModelStatus', modelId),
+    selectModel: (modelId: string) =>
+      ipcRenderer.invoke('whisper:selectModel', modelId),
+    deleteModel: (modelId: string) =>
+      ipcRenderer.invoke('whisper:deleteModel', modelId),
+    onDownloadProgress: (callback: (payload: { modelId?: string; modelName: string; downloadedBytes: number; totalBytes?: number; percent?: number; speed?: number }) => void) => {
       ipcRenderer.on('whisper:downloadProgress', (_, payload) => callback(payload))
       return () => ipcRenderer.removeAllListeners('whisper:downloadProgress')
     }

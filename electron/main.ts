@@ -3982,14 +3982,22 @@ function registerIpcHandlers() {
     return { success: true }
   })
 
-  ipcMain.handle('whisper:downloadModel', async (event) => {
-    return voiceTranscribeService.downloadModel((progress) => {
+  ipcMain.handle('whisper:downloadModel', async (event, modelId?: string) => {
+    return voiceTranscribeService.downloadModel(modelId, (progress) => {
       event.sender.send('whisper:downloadProgress', progress)
     })
   })
 
-  ipcMain.handle('whisper:getModelStatus', async () => {
-    return voiceTranscribeService.getModelStatus()
+  ipcMain.handle('whisper:getModelStatus', async (_, modelId?: string) => {
+    return voiceTranscribeService.getModelStatus(modelId)
+  })
+
+  ipcMain.handle('whisper:selectModel', async (_, modelId: string) => {
+    return voiceTranscribeService.selectModel(modelId)
+  })
+
+  ipcMain.handle('whisper:deleteModel', async (_, modelId: string) => {
+    return voiceTranscribeService.deleteModel(modelId)
   })
 
   // 群聊分析相关

@@ -6923,7 +6923,7 @@ function ChatPage(props: ChatPageProps) {
         updateTranscribeTaskStatus('正在检查转写模型...', `0 / ${totalVoices}`)
         const modelStatus = await window.electronAPI.whisper.getModelStatus()
         if (!modelStatus?.exists) {
-          alert('SenseVoice 模型未下载，请先在设置中下载模型')
+          alert('语音识别模型未下载，请先在设置 → 模型管理中下载并选择模型')
           updateTranscribeTaskStatus('转写模型缺失，任务已停止', `0 / ${totalVoices}`)
           finishTranscribe(0, totalVoices)
           return

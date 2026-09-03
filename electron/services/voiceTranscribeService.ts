@@ -1,25 +1,70 @@
 ﻿import { app } from 'electron'
-import { existsSync, mkdirSync, statSync, unlinkSync, createWriteStream, openSync, writeSync, closeSync } from 'fs'
+import {
+  existsSync,
+  mkdirSync,
+  statSync,
+  unlinkSync,
+  createWriteStream,
+  openSync,
+  writeSync,
+  closeSync,
+  rmSync
+} from 'fs'
 import { join } from 'path'
 import * as https from 'https'
 import * as http from 'http'
 import { ConfigService } from './config'
 
-// Sherpa-onnx 类型定义
 type OfflineRecognizer = any
-type OfflineStream = any
 
-type ModelInfo = {
-  name: string
-  files: {
-    model: string
-    tokens: string
-  }
-  sizeBytes: number
-  sizeLabel: string
+export type VoiceModelEngine = 'sensevoice' | 'whisper'
+
+export type VoiceModelFileSpec = {
+  key: 'model' | 'encoder' | 'decoder' | 'tokens'
+  fileName: string
+  urls: string[]
 }
 
-type DownloadProgress = {
+export type VoiceModelCatalogItem = {
+  id: string
+  name: string
+  engine: VoiceModelEngine
+  size: string
+  sizeBytes: number
+  speed: string
+  quality: string
+  description: string
+  recommended?: boolean
+  files: VoiceModelFileSpec[]
+}
+
+export type VoiceModelCard = VoiceModelCatalogItem & {
+  downloaded: boolean
+  selected: boolean
+  deletable: boolean
+  downloadable: boolean
+  downloadStatus: 'idle' | 'running' | 'error'
+  downloadPercent?: number
+  downloadError?: string
+  path?: string
+}
+
+export type VoiceModelsState = {
+  success: boolean
+  exists: boolean
+  selectedModel: string
+  modelsRoot: string
+  modelPath?: string
+  tokensPath?: string
+  encoderPath?: string
+  decoderPath?: string
+  sizeBytes?: number
+  models: VoiceModelCard[]
+  error?: string
+}
+
+export type DownloadProgress = {
+  modelId: string
   modelName: string
   downloadedBytes: number
   totalBytes?: number
@@ -27,26 +72,164 @@ type DownloadProgress = {
   speed?: number
 }
 
-const SENSEVOICE_MODEL: ModelInfo = {
-  name: 'SenseVoiceSmall',
-  files: {
-    model: 'model.int8.onnx',
-    tokens: 'tokens.txt'
-  },
-  sizeBytes: 245_000_000,
-  sizeLabel: '245 MB'
+type ResolvedModelPaths = {
+  item: VoiceModelCatalogItem
+  dir: string
+  modelPath?: string
+  encoderPath?: string
+  decoderPath?: string
+  tokensPath: string
 }
 
-const MODEL_DOWNLOAD_URLS = {
-  model: 'https://modelscope.cn/models/pengzhendong/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/master/model.int8.onnx',
-  tokens: 'https://modelscope.cn/models/pengzhendong/sherpa-onnx-sense-voice-zh-en-ja-ko-yue/resolve/master/tokens.txt'
+const DEFAULT_MODEL_ID = 'sensevoice'
+
+function modelscopeUrl(owner: string, repo: string, fileName: string): string {
+  return `https://modelscope.cn/models/${owner}/${repo}/resolve/master/${fileName}`
+}
+
+function hfMirrorUrl(owner: string, repo: string, fileName: string): string {
+  return `https://hf-mirror.com/${owner}/${repo}/resolve/main/${fileName}`
+}
+
+function hfUrl(owner: string, repo: string, fileName: string): string {
+  return `https://huggingface.co/${owner}/${repo}/resolve/main/${fileName}`
+}
+
+function whisperFile(id: string, key: VoiceModelFileSpec['key'], fileName: string): VoiceModelFileSpec {
+  const repo = `sherpa-onnx-whisper-${id}`
+  return {
+    key,
+    fileName,
+    urls: [
+      modelscopeUrl('csukuangfj', repo, fileName),
+      hfMirrorUrl('csukuangfj', repo, fileName),
+      hfUrl('csukuangfj', repo, fileName)
+    ]
+  }
+}
+
+export const VOICE_MODEL_CATALOG: VoiceModelCatalogItem[] = [
+  {
+    id: 'sensevoice',
+    name: 'SenseVoice Small',
+    engine: 'sensevoice',
+    size: '约 245 MB',
+    sizeBytes: 245_000_000,
+    speed: '快',
+    quality: '中文最佳',
+    description: '默认推荐。专为中文、粤语优化，同时支持英日韩。',
+    recommended: true,
+    files: [
+      {
+        key: 'model',
+        fileName: 'model.int8.onnx',
+        urls: [
+          modelscopeUrl('pengzhendong', 'sherpa-onnx-sense-voice-zh-en-ja-ko-yue', 'model.int8.onnx'),
+          hfMirrorUrl('pengzhendong', 'sherpa-onnx-sense-voice-zh-en-ja-ko-yue', 'model.int8.onnx'),
+          hfUrl('pengzhendong', 'sherpa-onnx-sense-voice-zh-en-ja-ko-yue', 'model.int8.onnx')
+        ]
+      },
+      {
+        key: 'tokens',
+        fileName: 'tokens.txt',
+        urls: [
+          modelscopeUrl('pengzhendong', 'sherpa-onnx-sense-voice-zh-en-ja-ko-yue', 'tokens.txt'),
+          hfMirrorUrl('pengzhendong', 'sherpa-onnx-sense-voice-zh-en-ja-ko-yue', 'tokens.txt'),
+          hfUrl('pengzhendong', 'sherpa-onnx-sense-voice-zh-en-ja-ko-yue', 'tokens.txt')
+        ]
+      }
+    ]
+  },
+  {
+    id: 'tiny',
+    name: 'Tiny',
+    engine: 'whisper',
+    size: '约 103 MB',
+    sizeBytes: 103_000_000,
+    speed: '最快',
+    quality: '基础',
+    description: '适合快速预览和低配置设备。',
+    files: [
+      whisperFile('tiny', 'encoder', 'tiny-encoder.int8.onnx'),
+      whisperFile('tiny', 'decoder', 'tiny-decoder.int8.onnx'),
+      whisperFile('tiny', 'tokens', 'tiny-tokens.txt')
+    ]
+  },
+  {
+    id: 'base',
+    name: 'Base',
+    engine: 'whisper',
+    size: '约 160 MB',
+    sizeBytes: 160_000_000,
+    speed: '很快',
+    quality: '入门',
+    description: '速度与基础准确率兼顾。',
+    files: [
+      whisperFile('base', 'encoder', 'base-encoder.int8.onnx'),
+      whisperFile('base', 'decoder', 'base-decoder.int8.onnx'),
+      whisperFile('base', 'tokens', 'base-tokens.txt')
+    ]
+  },
+  {
+    id: 'small',
+    name: 'Small',
+    engine: 'whisper',
+    size: '约 374 MB',
+    sizeBytes: 374_000_000,
+    speed: '较快',
+    quality: '良好',
+    description: '日常中文聊天的轻量选择。',
+    files: [
+      whisperFile('small', 'encoder', 'small-encoder.int8.onnx'),
+      whisperFile('small', 'decoder', 'small-decoder.int8.onnx'),
+      whisperFile('small', 'tokens', 'small-tokens.txt')
+    ]
+  },
+  {
+    id: 'medium',
+    name: 'Medium',
+    engine: 'whisper',
+    size: '约 945 MB',
+    sizeBytes: 945_000_000,
+    speed: '中等',
+    quality: '较高',
+    description: '兼顾准确率与资源占用，适合性能较好的设备。',
+    files: [
+      whisperFile('medium', 'encoder', 'medium-encoder.int8.onnx'),
+      whisperFile('medium', 'decoder', 'medium-decoder.int8.onnx'),
+      whisperFile('medium', 'tokens', 'medium-tokens.txt')
+    ]
+  },
+  {
+    id: 'large-v3',
+    name: 'Large v3',
+    engine: 'whisper',
+    size: '约 1.6 GB',
+    sizeBytes: 1_600_000_000,
+    speed: '较慢',
+    quality: '最高',
+    description: '追求最高准确率，适合高性能设备。',
+    files: [
+      whisperFile('large-v3', 'encoder', 'large-v3-encoder.int8.onnx'),
+      whisperFile('large-v3', 'decoder', 'large-v3-decoder.int8.onnx'),
+      whisperFile('large-v3', 'tokens', 'large-v3-tokens.txt')
+    ]
+  }
+]
+
+const VOICE_MODEL_IDS = new Set(VOICE_MODEL_CATALOG.map((item) => item.id))
+
+function getCatalogItem(id: string): VoiceModelCatalogItem | undefined {
+  return VOICE_MODEL_CATALOG.find((item) => item.id === id)
 }
 
 export class VoiceTranscribeService {
   private configService = new ConfigService()
   private downloadTasks = new Map<string, Promise<{ success: boolean; path?: string; error?: string }>>()
+  private cancelledDownloads = new Set<string>()
+  private downloadProgress = new Map<string, DownloadProgress>()
+  private downloadErrors = new Map<string, string>()
   private recognizer: OfflineRecognizer | null = null
-  private isInitializing = false
   private transcribeQueueTail: Promise<void> = Promise.resolve()
 
   private buildTranscribeWorkerEnv(): NodeJS.ProcessEnv {
@@ -77,7 +260,6 @@ export class VoiceTranscribeService {
         console.warn(`[VoiceTranscribe] 未找到 ${platformPkg} 目录，可能导致语音引擎加载失败`)
       }
     } else if (process.platform === 'win32') {
-      // Windows: 把 sherpa-onnx 所在目录加到 PATH，否则 native module 找不到依赖
       const existing = env['PATH'] || ''
       const merged = [...candidates, ...existing.split(';').filter(Boolean)]
       env['PATH'] = Array.from(new Set(merged)).join(';')
@@ -89,141 +271,307 @@ export class VoiceTranscribeService {
     return env
   }
 
-  private resolveModelDir(): string {
-    const configured = this.configService.get('whisperModelDir') as string | undefined
+  private resolveModelsRoot(): string {
+    const configured = String(this.configService.get('whisperModelDir') || '').trim()
     if (configured) return configured
-    return join(app.getPath('documents'), 'WeMemo', 'models', 'sensevoice')
+    return join(app.getPath('documents'), 'WeMemo', 'models')
   }
 
-  private resolveModelPath(fileName: string): string {
-    return join(this.resolveModelDir(), fileName)
+  private resolveModelDir(modelId: string): string {
+    const configured = String(this.configService.get('whisperModelDir') || '').trim()
+    if (
+      configured
+      && modelId === 'sensevoice'
+      && existsSync(join(configured, 'model.int8.onnx'))
+    ) {
+      return configured
+    }
+    return join(this.resolveModelsRoot(), modelId)
   }
 
-  /**
-   * 检查模型状态
-   */
-  async getModelStatus(): Promise<{
-    success: boolean
-    exists?: boolean
-    modelPath?: string
-    tokensPath?: string
-    sizeBytes?: number
-    error?: string
-  }> {
-    try {
-      const modelPath = this.resolveModelPath(SENSEVOICE_MODEL.files.model)
-      const tokensPath = this.resolveModelPath(SENSEVOICE_MODEL.files.tokens)
-      const modelExists = existsSync(modelPath)
-      const tokensExists = existsSync(tokensPath)
-      const exists = modelExists && tokensExists
-
-      if (!exists) {
-        return { success: true, exists: false, modelPath, tokensPath }
-      }
-
-      const modelSize = statSync(modelPath).size
-      const tokensSize = statSync(tokensPath).size
-      const totalSize = modelSize + tokensSize
-
-      return {
-        success: true,
-        exists: true,
-        modelPath,
-        tokensPath,
-        sizeBytes: totalSize
-      }
-    } catch (error) {
-      return { success: false, error: String(error) }
+  private resolveModelPaths(item: VoiceModelCatalogItem): ResolvedModelPaths {
+    const dir = this.resolveModelDir(item.id)
+    const byKey = (key: VoiceModelFileSpec['key']) => {
+      const spec = item.files.find((file) => file.key === key)
+      return spec ? join(dir, spec.fileName) : undefined
+    }
+    return {
+      item,
+      dir,
+      modelPath: byKey('model'),
+      encoderPath: byKey('encoder'),
+      decoderPath: byKey('decoder'),
+      tokensPath: byKey('tokens') || join(dir, 'tokens.txt')
     }
   }
 
-  /**
-   * 下载模型文件
-   */
+  private isModelDownloaded(item: VoiceModelCatalogItem): boolean {
+    const paths = this.resolveModelPaths(item)
+    return item.files.every((file) => existsSync(join(paths.dir, file.fileName)))
+  }
+
+  private readStoredModelId(): string {
+    const stored = String(this.configService.get('whisperModelName') || '').trim()
+    if (VOICE_MODEL_IDS.has(stored)) return stored
+    return DEFAULT_MODEL_ID
+  }
+
+  private persistSelectedModel(modelId: string): void {
+    this.configService.set('whisperModelName', modelId)
+  }
+
+  private resolveSelectedModelId(): string {
+    const stored = this.readStoredModelId()
+    const storedItem = getCatalogItem(stored)
+    if (stored === 'base') {
+      const baseDownloaded = Boolean(storedItem && this.isModelDownloaded(storedItem))
+      if (!baseDownloaded) {
+        this.persistSelectedModel(DEFAULT_MODEL_ID)
+        return DEFAULT_MODEL_ID
+      }
+    }
+    return storedItem ? stored : DEFAULT_MODEL_ID
+  }
+
+  private assertNotCancelled(modelId: string): void {
+    if (this.cancelledDownloads.has(modelId)) {
+      throw new Error('DOWNLOAD_CANCELLED')
+    }
+  }
+
+  getSelectedModelId(): string {
+    return this.resolveSelectedModelId()
+  }
+
+  getCatalog(): VoiceModelCatalogItem[] {
+    return VOICE_MODEL_CATALOG
+  }
+
+  getModelStatus(modelId?: string): VoiceModelsState {
+    try {
+      const selectedModel = modelId && VOICE_MODEL_IDS.has(modelId)
+        ? modelId
+        : this.resolveSelectedModelId()
+      const models = VOICE_MODEL_CATALOG.map((item) => {
+        const downloaded = this.isModelDownloaded(item)
+        const progress = this.downloadProgress.get(item.id)
+        const downloadError = this.downloadErrors.get(item.id)
+        const running = this.downloadTasks.has(item.id)
+        return {
+          ...item,
+          downloaded,
+          selected: item.id === selectedModel,
+          deletable: downloaded || running,
+          downloadable: !downloaded,
+          downloadStatus: running ? 'running' : downloadError ? 'error' : 'idle',
+          downloadPercent: progress?.percent,
+          downloadError,
+          path: this.resolveModelDir(item.id)
+        } satisfies VoiceModelCard
+      })
+      const selected = models.find((item) => item.id === selectedModel) || models[0]
+      const paths = selected ? this.resolveModelPaths(selected) : undefined
+      return {
+        success: true,
+        exists: Boolean(selected?.downloaded),
+        selectedModel,
+        modelsRoot: this.resolveModelsRoot(),
+        modelPath: paths?.modelPath || paths?.encoderPath,
+        tokensPath: paths?.tokensPath,
+        encoderPath: paths?.encoderPath,
+        decoderPath: paths?.decoderPath,
+        sizeBytes: selected?.downloaded
+          ? selected.files.reduce((sum, file) => {
+              const filePath = join(paths!.dir, file.fileName)
+              return sum + (existsSync(filePath) ? statSync(filePath).size : 0)
+            }, 0)
+          : undefined,
+        models
+      }
+    } catch (error) {
+      return {
+        success: false,
+        exists: false,
+        selectedModel: DEFAULT_MODEL_ID,
+        modelsRoot: this.resolveModelsRoot(),
+        models: [],
+        error: String(error)
+      }
+    }
+  }
+
+  async selectModel(modelId: string): Promise<{ success: boolean; selectedModel?: string; error?: string }> {
+    const item = getCatalogItem(modelId)
+    if (!item) {
+      return { success: false, error: `未知模型: ${modelId}` }
+    }
+    if (!this.isModelDownloaded(item)) {
+      return { success: false, error: `${item.name} 尚未下载到本机` }
+    }
+    this.persistSelectedModel(item.id)
+    return { success: true, selectedModel: item.id }
+  }
+
+  async deleteModel(modelId: string): Promise<{ success: boolean; selectedModel?: string; error?: string }> {
+    const item = getCatalogItem(modelId)
+    if (!item) {
+      return { success: false, error: `未知模型: ${modelId}` }
+    }
+
+    this.cancelledDownloads.add(modelId)
+    const pending = this.downloadTasks.get(modelId)
+    if (pending) {
+      await pending.catch(() => undefined)
+    }
+
+    const dir = this.resolveModelDir(item.id)
+    try {
+      if (existsSync(dir)) {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    } catch (error) {
+      this.cancelledDownloads.delete(modelId)
+      return { success: false, error: `删除失败: ${String(error)}` }
+    }
+
+    this.downloadProgress.delete(modelId)
+    this.downloadErrors.delete(modelId)
+    this.cancelledDownloads.delete(modelId)
+
+    let selectedModel = this.resolveSelectedModelId()
+    if (selectedModel === modelId) {
+      const fallback = VOICE_MODEL_CATALOG.find((candidate) => (
+        candidate.id !== modelId && this.isModelDownloaded(candidate)
+      ))
+      selectedModel = fallback?.id || DEFAULT_MODEL_ID
+      this.persistSelectedModel(selectedModel)
+    }
+
+    return { success: true, selectedModel }
+  }
+
   async downloadModel(
+    modelIdOrProgress?: string | ((progress: DownloadProgress) => void),
     onProgress?: (progress: DownloadProgress) => void
   ): Promise<{ success: boolean; modelPath?: string; tokensPath?: string; error?: string }> {
-    const cacheKey = 'sensevoice'
-    const pending = this.downloadTasks.get(cacheKey)
+    const modelId = typeof modelIdOrProgress === 'string' ? modelIdOrProgress : undefined
+    const progressCallback = typeof modelIdOrProgress === 'function' ? modelIdOrProgress : onProgress
+    return this.downloadModelNow(modelId, progressCallback)
+  }
+
+  private async downloadModelNow(
+    modelId: string | undefined,
+    onProgress?: (progress: DownloadProgress) => void
+  ): Promise<{ success: boolean; modelPath?: string; tokensPath?: string; error?: string }> {
+    const targetId = modelId && VOICE_MODEL_IDS.has(modelId)
+      ? modelId
+      : this.resolveSelectedModelId()
+    const item = getCatalogItem(targetId)
+    if (!item) {
+      return { success: false, error: `未知模型: ${targetId}` }
+    }
+
+    const pending = this.downloadTasks.get(item.id)
     if (pending) return pending
+
+    this.cancelledDownloads.delete(item.id)
+    this.downloadErrors.delete(item.id)
 
     const task = (async () => {
       try {
-        const modelDir = this.resolveModelDir()
-        if (!existsSync(modelDir)) {
-          mkdirSync(modelDir, { recursive: true })
+        const paths = this.resolveModelPaths(item)
+        if (!existsSync(paths.dir)) {
+          mkdirSync(paths.dir, { recursive: true })
         }
 
-        const modelPath = this.resolveModelPath(SENSEVOICE_MODEL.files.model)
-        const tokensPath = this.resolveModelPath(SENSEVOICE_MODEL.files.tokens)
-
-        // 初始进度
-        onProgress?.({
-          modelName: SENSEVOICE_MODEL.name,
-          downloadedBytes: 0,
-          totalBytes: SENSEVOICE_MODEL.sizeBytes,
-          percent: 0
-        })
-
-        // 下载模型文件 (80% 权重)
-        console.info('[VoiceTranscribe] 开始下载模型文件...')
-        await this.downloadToFile(
-          MODEL_DOWNLOAD_URLS.model,
-          modelPath,
-          'model',
-          (downloaded, total, speed) => {
-            const percent = total ? (downloaded / total) * 80 : 0
-            onProgress?.({
-              modelName: SENSEVOICE_MODEL.name,
-              downloadedBytes: downloaded,
-              totalBytes: SENSEVOICE_MODEL.sizeBytes,
-              percent,
-              speed
-            })
+        const emit = (downloadedBytes: number, percent: number, speed?: number) => {
+          const progress: DownloadProgress = {
+            modelId: item.id,
+            modelName: item.name,
+            downloadedBytes,
+            totalBytes: item.sizeBytes,
+            percent,
+            speed
           }
-        )
+          this.downloadProgress.set(item.id, progress)
+          onProgress?.(progress)
+        }
 
-        // 下载 tokens 文件 (20% 权重)
-        console.info('[VoiceTranscribe] 开始下载 tokens 文件...')
-        await this.downloadToFile(
-          MODEL_DOWNLOAD_URLS.tokens,
-          tokensPath,
-          'tokens',
-          (downloaded, total, speed) => {
-            const modelSize = existsSync(modelPath) ? statSync(modelPath).size : 0
-            const percent = total ? 80 + (downloaded / total) * 20 : 80
-            onProgress?.({
-              modelName: SENSEVOICE_MODEL.name,
-              downloadedBytes: modelSize + downloaded,
-              totalBytes: SENSEVOICE_MODEL.sizeBytes,
-              percent,
-              speed
-            })
-          }
-        )
+        emit(0, 0)
 
-        console.info('[VoiceTranscribe] 模型下载完成')
-        return { success: true, modelPath, tokensPath }
+        const weights = item.files.map((file) => (
+          file.key === 'tokens' ? 0.08 : 1
+        ))
+        const weightSum = weights.reduce((sum, weight) => sum + weight, 0)
+        let completedWeight = 0
+
+        for (let index = 0; index < item.files.length; index += 1) {
+          this.assertNotCancelled(item.id)
+          const file = item.files[index]
+          const weight = weights[index]
+          const targetPath = join(paths.dir, file.fileName)
+          console.info(`[VoiceTranscribe] 开始下载 ${item.name} / ${file.fileName}`)
+          await this.downloadWithFallback(
+            file.urls,
+            targetPath,
+            file.fileName,
+            (downloaded, total, speed) => {
+              this.assertNotCancelled(item.id)
+              const fileRatio = total ? downloaded / total : 0
+              const percent = ((completedWeight + fileRatio * weight) / weightSum) * 100
+              const downloadedBytes = Math.min(
+                item.sizeBytes,
+                Math.round((percent / 100) * item.sizeBytes)
+              )
+              emit(downloadedBytes, percent, speed)
+            }
+          )
+          completedWeight += weight
+        }
+
+        this.assertNotCancelled(item.id)
+        emit(item.sizeBytes, 100, 0)
+        this.downloadProgress.delete(item.id)
+        console.info(`[VoiceTranscribe] ${item.name} 下载完成`)
+
+        const selected = this.resolveSelectedModelId()
+        const selectedItem = getCatalogItem(selected)
+        if (!selectedItem || !this.isModelDownloaded(selectedItem)) {
+          this.persistSelectedModel(item.id)
+        }
+
+        return {
+          success: true,
+          modelPath: paths.modelPath || paths.encoderPath,
+          tokensPath: paths.tokensPath
+        }
       } catch (error) {
-        const modelPath = this.resolveModelPath(SENSEVOICE_MODEL.files.model)
-        const tokensPath = this.resolveModelPath(SENSEVOICE_MODEL.files.tokens)
+        const message = String(error)
+        const cancelled = message.includes('DOWNLOAD_CANCELLED')
+        const dir = this.resolveModelDir(item.id)
         try {
-          if (existsSync(modelPath)) unlinkSync(modelPath)
-          if (existsSync(tokensPath)) unlinkSync(tokensPath)
-        } catch { }
-        return { success: false, error: String(error) }
+          if (existsSync(dir)) {
+            rmSync(dir, { recursive: true, force: true })
+          }
+        } catch { /* ignore cleanup errors */ }
+        this.downloadProgress.delete(item.id)
+        if (!cancelled) {
+          this.downloadErrors.set(item.id, message)
+        }
+        return {
+          success: false,
+          error: cancelled ? '已停止下载并删除临时文件' : message
+        }
       } finally {
-        this.downloadTasks.delete(cacheKey)
+        this.downloadTasks.delete(item.id)
+        this.cancelledDownloads.delete(item.id)
       }
     })()
 
-    this.downloadTasks.set(cacheKey, task)
+    this.downloadTasks.set(item.id, task)
     return task
   }
 
-  /**
-   * 转写 WAV 音频数据
-   */
   async transcribeWavBuffer(
     wavData: Buffer,
     onPartial?: (text: string) => void,
@@ -254,14 +602,18 @@ export class VoiceTranscribeService {
   ): Promise<{ success: boolean; transcript?: string; error?: string }> {
     return new Promise((resolve) => {
       try {
-        const modelPath = this.resolveModelPath(SENSEVOICE_MODEL.files.model)
-        const tokensPath = this.resolveModelPath(SENSEVOICE_MODEL.files.tokens)
-
-        if (!existsSync(modelPath) || !existsSync(tokensPath)) {
+        const selectedId = this.resolveSelectedModelId()
+        const item = getCatalogItem(selectedId)
+        if (!item) {
+          resolve({ success: false, error: '未找到可用的语音识别模型' })
+          return
+        }
+        if (!this.isModelDownloaded(item)) {
           resolve({ success: false, error: '模型文件不存在，请先下载模型' })
           return
         }
 
+        const paths = this.resolveModelPaths(item)
         let supportedLanguages = languages
         if (!supportedLanguages || supportedLanguages.length === 0) {
           supportedLanguages = this.configService.get('transcribeLanguages')
@@ -296,14 +648,14 @@ export class VoiceTranscribeService {
             if (worker.connected) {
               worker.disconnect()
             }
-          } catch { }
+          } catch { /* ignore */ }
 
           shutdownTimer = setTimeout(() => {
             try {
               if (!worker.killed) {
                 worker.kill('SIGTERM')
               }
-            } catch { }
+            } catch { /* ignore */ }
           }, 1500)
         }
 
@@ -315,8 +667,11 @@ export class VoiceTranscribeService {
         }
 
         worker.send({
-          modelPath,
-          tokensPath,
+          engine: item.engine,
+          modelPath: paths.modelPath,
+          encoderPath: paths.encoderPath,
+          decoderPath: paths.decoderPath,
+          tokensPath: paths.tokensPath,
           wavData,
           sampleRate: 16000,
           languages: supportedLanguages
@@ -346,7 +701,7 @@ export class VoiceTranscribeService {
           if (settled) return
 
           if (signal === 'SIGSEGV') {
-            console.error(`[VoiceTranscribe] Worker 异常崩溃，信号: ${signal}。可能是由于底层 C++ 运行库在当前系统上发生段错误。`);
+            console.error(`[VoiceTranscribe] Worker 异常崩溃，信号: ${signal}。可能是由于底层 C++ 运行库在当前系统上发生段错误。`)
             settle({
               success: false,
               error: 'SEGFAULT_ERROR'
@@ -369,16 +724,34 @@ export class VoiceTranscribeService {
 
           settle({ success: false, error: '转写进程未返回结果' }, false)
         })
-
       } catch (error) {
         resolve({ success: false, error: String(error) })
       }
     })
   }
 
-  /**
-   * 下载文件 (支持多线程)
-   */
+  private async downloadWithFallback(
+    urls: string[],
+    targetPath: string,
+    fileName: string,
+    onProgress?: (downloaded: number, total?: number, speed?: number) => void
+  ): Promise<void> {
+    let lastError: unknown
+    for (const url of urls) {
+      try {
+        await this.downloadToFile(url, targetPath, fileName, onProgress)
+        return
+      } catch (error) {
+        lastError = error
+        console.warn(`[VoiceTranscribe] ${fileName} 下载失败，尝试备用源: ${url}`, error)
+        try {
+          if (existsSync(targetPath)) unlinkSync(targetPath)
+        } catch { /* ignore */ }
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError || '下载失败'))
+  }
+
   private async downloadToFile(
     url: string,
     targetPath: string,
@@ -391,7 +764,6 @@ export class VoiceTranscribeService {
 
     console.info(`[VoiceTranscribe] 准备下载 ${fileName}: ${url}`)
 
-    // 1. 探测支持情况
     let probeResult
     try {
       probeResult = await this.probeUrl(url)
@@ -402,7 +774,6 @@ export class VoiceTranscribeService {
 
     const { totalSize, acceptRanges, finalUrl } = probeResult
 
-    // 如果文件太小 (< 2MB) 或者不支持 Range，使用单线程
     if (totalSize < 2 * 1024 * 1024 || !acceptRanges) {
       return this.downloadSingleThread(finalUrl, targetPath, fileName, onProgress)
     }
@@ -441,7 +812,6 @@ export class VoiceTranscribeService {
       }
 
       await Promise.all(promises)
-      // Final progress update
       onProgress?.(totalSize, totalSize, 0)
       console.info(`[VoiceTranscribe] ${fileName} 多线程下载完成`)
     } catch (err) {
@@ -533,7 +903,13 @@ export class VoiceTranscribeService {
     })
   }
 
-  private async downloadSingleThread(url: string, targetPath: string, fileName: string, onProgress?: (downloaded: number, total?: number, speed?: number) => void, remainingRedirects = 5): Promise<void> {
+  private async downloadSingleThread(
+    url: string,
+    targetPath: string,
+    fileName: string,
+    onProgress?: (downloaded: number, total?: number, speed?: number) => void,
+    remainingRedirects = 5
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       const protocol = url.startsWith('https') ? https : http
       const options = {
@@ -588,14 +964,12 @@ export class VoiceTranscribeService {
 
         writer.on('error', (err) => {
           clearInterval(speedInterval)
-          // 确保在错误情况下也关闭文件句柄
           writer.destroy()
           reject(err)
         })
 
         response.on('error', (err) => {
           clearInterval(speedInterval)
-          // 确保在响应错误时也关闭文件句柄
           writer.destroy()
           reject(err)
         })

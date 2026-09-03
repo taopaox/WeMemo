@@ -15,6 +15,26 @@ export const VoiceTranscribeDialog: React.FC<VoiceTranscribeDialogProps> = ({
     const [downloadProgress, setDownloadProgress] = useState(0)
     const [downloadError, setDownloadError] = useState<string | null>(null)
     const [isComplete, setIsComplete] = useState(false)
+    const [modelInfo, setModelInfo] = useState<{ id: string; name: string; size: string }>({
+        id: 'sensevoice',
+        name: 'SenseVoice Small',
+        size: '约 245 MB'
+    })
+
+    useEffect(() => {
+        const loadModelInfo = async () => {
+            try {
+                const status = await window.electronAPI?.whisper?.getModelStatus()
+                const selected = status?.models?.find((item) => item.selected) || status?.models?.find((item) => item.id === 'sensevoice')
+                if (selected) {
+                    setModelInfo({ id: selected.id, name: selected.name, size: selected.size })
+                }
+            } catch {
+                // keep default
+            }
+        }
+        void loadModelInfo()
+    }, [])
 
     useEffect(() => {
         // 监听下载进度
@@ -23,7 +43,8 @@ export const VoiceTranscribeDialog: React.FC<VoiceTranscribeDialogProps> = ({
             return
         }
 
-        const removeListener = window.electronAPI.whisper.onDownloadProgress((payload: { modelName: string; downloadedBytes: number; totalBytes?: number; percent?: number }) => {
+        const removeListener = window.electronAPI.whisper.onDownloadProgress((payload: { modelId?: string; modelName: string; downloadedBytes: number; totalBytes?: number; percent?: number }) => {
+            if (payload.modelId && payload.modelId !== modelInfo.id) return
             if (payload.percent !== undefined) {
                 setDownloadProgress(payload.percent)
             }
@@ -32,7 +53,7 @@ export const VoiceTranscribeDialog: React.FC<VoiceTranscribeDialogProps> = ({
         return () => {
             removeListener?.()
         }
-    }, [])
+    }, [modelInfo.id])
 
     const handleDownload = async () => {
         if (!window.electronAPI?.whisper?.downloadModel) {
@@ -45,7 +66,7 @@ export const VoiceTranscribeDialog: React.FC<VoiceTranscribeDialogProps> = ({
         setDownloadProgress(0)
 
         try {
-            const result = await window.electronAPI.whisper.downloadModel()
+            const result = await window.electronAPI.whisper.downloadModel(modelInfo.id)
 
             if (result?.success) {
                 setIsComplete(true)
@@ -94,11 +115,11 @@ export const VoiceTranscribeDialog: React.FC<VoiceTranscribeDialogProps> = ({
                                 <div className="model-info">
                                     <div className="model-item">
                                         <span className="label">模型名称：</span>
-                                        <span className="value">SenseVoiceSmall</span>
+                                        <span className="value">{modelInfo.name}</span>
                                     </div>
                                     <div className="model-item">
                                         <span className="label">文件大小：</span>
-                                        <span className="value">约 240 MB</span>
+                                        <span className="value">{modelInfo.size}</span>
                                     </div>
                                     <div className="model-item">
                                         <span className="label">支持语言：</span>

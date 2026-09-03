@@ -171,12 +171,12 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
   const [logEnabled, setLogEnabled] = useState(false)
   const [autoDownloadHighRes, setAutoDownloadHighRes] = useState(false)
-  const [whisperModelName, setWhisperModelName] = useState('base')
   const [whisperModelDir, setWhisperModelDir] = useState('')
-  const [isWhisperDownloading, setIsWhisperDownloading] = useState(false)
-  const [whisperDownloadProgress, setWhisperDownloadProgress] = useState(0)
-  const [whisperProgressData, setWhisperProgressData] = useState<{ downloaded: number; total: number; speed: number }>({ downloaded: 0, total: 0, speed: 0 })
-  const [whisperModelStatus, setWhisperModelStatus] = useState<{ exists: boolean; modelPath?: string; tokensPath?: string } | null>(null)
+  const [voiceModels, setVoiceModels] = useState<NonNullable<Awaited<ReturnType<typeof window.electronAPI.whisper.getModelStatus>>['models']>>([])
+  const [selectedVoiceModel, setSelectedVoiceModel] = useState('sensevoice')
+  const [voiceModelsRoot, setVoiceModelsRoot] = useState('')
+  const [voiceModelAction, setVoiceModelAction] = useState<{ id: string; type: 'select' | 'download' | 'delete' } | null>(null)
+  const [voiceDownloadProgress, setVoiceDownloadProgress] = useState<Record<string, { downloaded: number; total: number; speed: number; percent: number }>>({})
 
   const [httpApiToken, setHttpApiToken] = useState('')
 
@@ -584,6 +584,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
       }
 
 
+      if (savedWhisperModelName) setSelectedVoiceModel(savedWhisperModelName)
       if (savedWhisperModelDir) setWhisperModelDir(savedWhisperModelDir)
 
       // 加载 AI 见解配置
@@ -698,18 +699,16 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
     }
   }
 
-  const refreshWhisperStatus = async (modelDirValue = whisperModelDir) => {
+  const refreshWhisperStatus = async () => {
     try {
       const result = await window.electronAPI.whisper?.getModelStatus()
       if (result?.success) {
-        setWhisperModelStatus({
-          exists: Boolean(result.exists),
-          modelPath: result.modelPath,
-          tokensPath: result.tokensPath
-        })
+        setVoiceModels(result.models || [])
+        setSelectedVoiceModel(result.selectedModel || 'sensevoice')
+        setVoiceModelsRoot(result.modelsRoot || '')
       }
     } catch {
-      setWhisperModelStatus(null)
+      setVoiceModels([])
     }
   }
 
@@ -731,22 +730,31 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
   }, [])
 
   useEffect(() => {
-    const removeListener = window.electronAPI.whisper?.onDownloadProgress?.((payload: { modelName: string; downloadedBytes: number; totalBytes?: number; percent?: number; speed?: number }) => {
-      setWhisperProgressData({
-        downloaded: payload.downloadedBytes,
-        total: payload.totalBytes || 0,
-        speed: payload.speed || 0
-      })
-      if (typeof payload.percent === 'number') {
-        setWhisperDownloadProgress(payload.percent)
-      }
+    const removeListener = window.electronAPI.whisper?.onDownloadProgress?.((payload: { modelId?: string; modelName: string; downloadedBytes: number; totalBytes?: number; percent?: number; speed?: number }) => {
+      const key = payload.modelId || payload.modelName
+      if (!key) return
+      setVoiceDownloadProgress((prev) => ({
+        ...prev,
+        [key]: {
+          downloaded: payload.downloadedBytes,
+          total: payload.totalBytes || 0,
+          speed: payload.speed || 0,
+          percent: typeof payload.percent === 'number' ? payload.percent : prev[key]?.percent || 0
+        }
+      }))
     })
     return () => removeListener?.()
   }, [])
 
   useEffect(() => {
-    void refreshWhisperStatus(whisperModelDir)
+    void refreshWhisperStatus()
   }, [whisperModelDir])
+
+  useEffect(() => {
+    if (activeTab === 'models') {
+      void refreshWhisperStatus()
+    }
+  }, [activeTab])
 
   useEffect(() => {
     if (activeTab === 'autoDownload') {
@@ -1327,41 +1335,89 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
   const handleSelectWhisperModelDir = async () => {
     try {
-      const result = await dialog.openFile({ title: '选择 Whisper 模型下载目录', properties: ['openDirectory'] })
+      const result = await dialog.openFile({ title: '选择模型下载目录', properties: ['openDirectory'] })
       if (!result.canceled && result.filePaths.length > 0) {
         const dir = result.filePaths[0]
         setWhisperModelDir(dir)
         await configService.setWhisperModelDir(dir)
-        showMessage('已选择 Whisper 模型目录', true)
+        showMessage('已选择模型目录', true)
       }
     } catch (e: any) {
       showMessage('选择目录失败', false)
     }
   }
 
-  const handleWhisperModelChange = async (value: string) => {
-    setWhisperModelName(value)
-    setWhisperDownloadProgress(0)
-    await configService.setWhisperModelName(value)
+  const handleSelectVoiceModel = async (modelId: string) => {
+    if (voiceModelAction) return
+    setVoiceModelAction({ id: modelId, type: 'select' })
+    try {
+      const result = await window.electronAPI.whisper.selectModel(modelId)
+      if (result.success) {
+        setSelectedVoiceModel(result.selectedModel || modelId)
+        await configService.setWhisperModelName(result.selectedModel || modelId)
+        showMessage('已切换识别模型', true)
+        await refreshWhisperStatus()
+      } else {
+        showMessage(result.error || '切换模型失败', false)
+      }
+    } catch (e: any) {
+      showMessage(`切换模型失败: ${e}`, false)
+    } finally {
+      setVoiceModelAction(null)
+    }
   }
 
-  const handleDownloadWhisperModel = async () => {
-    if (isWhisperDownloading) return
-    setIsWhisperDownloading(true)
-    setWhisperDownloadProgress(0)
+  const handleDownloadWhisperModel = async (modelId: string) => {
+    if (voiceModelAction) return
+    setVoiceModelAction({ id: modelId, type: 'download' })
+    setVoiceDownloadProgress((prev) => ({
+      ...prev,
+      [modelId]: { downloaded: 0, total: 0, speed: 0, percent: 0 }
+    }))
     try {
-      const result = await window.electronAPI.whisper.downloadModel()
+      const result = await window.electronAPI.whisper.downloadModel(modelId)
       if (result.success) {
-        setWhisperDownloadProgress(100)
-        showMessage('SenseVoiceSmall 模型下载完成', true)
-        await refreshWhisperStatus(whisperModelDir)
+        showMessage('模型下载完成', true)
+        await refreshWhisperStatus()
       } else {
         showMessage(result.error || '模型下载失败', false)
+        await refreshWhisperStatus()
       }
     } catch (e: any) {
       showMessage(`模型下载失败: ${e}`, false)
     } finally {
-      setIsWhisperDownloading(false)
+      setVoiceModelAction(null)
+    }
+  }
+
+  const handleDeleteVoiceModel = async (model: { id: string; name: string; downloaded: boolean; downloadStatus: string }) => {
+    if (voiceModelAction?.type === 'delete') return
+    const downloading = model.downloadStatus === 'running' || Boolean(voiceDownloadProgress[model.id])
+    const confirmed = window.confirm(
+      downloading
+        ? `确定停止 ${model.name} 的下载并删除已下载的临时文件吗？`
+        : `确定删除本机上的 ${model.name} 模型吗？需要时可重新下载。`
+    )
+    if (!confirmed) return
+
+    setVoiceModelAction({ id: model.id, type: 'delete' })
+    try {
+      const result = await window.electronAPI.whisper.deleteModel(model.id)
+      if (result.success) {
+        setVoiceDownloadProgress((prev) => {
+          const next = { ...prev }
+          delete next[model.id]
+          return next
+        })
+        showMessage(downloading ? '已停止下载并删除临时文件' : '模型已删除', true)
+        await refreshWhisperStatus()
+      } else {
+        showMessage(result.error || '删除模型失败', false)
+      }
+    } catch (e: any) {
+      showMessage(`删除模型失败: ${e}`, false)
+    } finally {
+      setVoiceModelAction(null)
     }
   }
 
@@ -2601,73 +2657,150 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
     </div>
   )
-  const resolvedWhisperModelPath = whisperModelDir || whisperModelStatus?.modelPath || ''
+  const resolvedWhisperModelPath = whisperModelDir || voiceModelsRoot || ''
+  const selectedVoiceModelMeta = voiceModels.find((model) => model.id === selectedVoiceModel) || voiceModels.find((model) => model.selected)
 
   const renderModelsTab = () => (
-    <div className="tab-content">
+    <div className="tab-content models-tab-content">
       <div className="form-group">
-        <label>语音识别模型 (Whisper)</label>
-        <span className="form-hint">用于语音消息转文字功能</span>
+        <div className="voice-model-header">
+          <div>
+            <label>语音识别模型</label>
+            <span className="form-hint">模型需先下载到本机，再选择用于后续语音识别；本应用下载的模型可随时删除。</span>
+          </div>
+          <span className="voice-model-current">当前：{selectedVoiceModelMeta?.name || '未选择'}</span>
+        </div>
 
-        <div className="setting-control vertical has-border">
-          <div className="model-status-card">
-            <div className="model-info">
-              <div className="model-name-row">
-                <div className="model-name">SenseVoiceSmall</div>
-                <span className="model-size">245 MB</span>
-              </div>
-              <div className="model-meta">
-                {whisperModelStatus?.exists ? (
-                  <span className="status-indicator success"><Check size={14} /> 已安装</span>
-                ) : (
-                  <span className="status-indicator warning">未安装</span>
-                )}
-              </div>
-            </div>
-            {(!whisperModelStatus?.exists || isWhisperDownloading) && (
-              <div className="model-actions">
-                {!whisperModelStatus?.exists && !isWhisperDownloading && (
-                  <button
-                    className="btn-download"
-                    onClick={handleDownloadWhisperModel}
-                  >
-                    <Download size={16} /> 下载模型
-                  </button>
-                )}
-                {isWhisperDownloading && (
-                  <div className="download-status">
-                    <div className="status-header">
-                      <span className="percent">{Math.round(whisperDownloadProgress)}%</span>
-                      {whisperProgressData.total > 0 && (
-                        <span className="details">
-                          {formatBytes(whisperProgressData.downloaded)} / {formatBytes(whisperProgressData.total)}
-                          <span className="speed">({formatBytes(whisperProgressData.speed)}/s)</span>
-                        </span>
-                      )}
+        <div className="voice-model-catalog" role="list" aria-label="可用语音识别模型">
+          {voiceModels.map((model) => {
+            const progress = voiceDownloadProgress[model.id]
+            const downloading = model.downloadStatus === 'running'
+              || (voiceModelAction?.id === model.id && voiceModelAction.type === 'download')
+              || Boolean(progress && !model.downloaded)
+            const percent = progress?.percent ?? model.downloadPercent ?? 0
+            const actionBusy = voiceModelAction?.id === model.id
+            const stateText = downloading
+              ? '下载中'
+              : model.downloaded
+                ? '已安装'
+                : model.downloadError
+                  ? '失败'
+                  : '未下载'
+            const stateClass = downloading
+              ? 'running'
+              : model.downloaded
+                ? 'success'
+                : model.downloadError
+                  ? 'danger'
+                  : 'warning'
+
+            return (
+              <article
+                key={model.id}
+                role="listitem"
+                className={`voice-model-card${model.selected ? ' selected' : ''}`}
+                data-voice-model={model.id}
+              >
+                <div className="voice-model-card-top">
+                  <div className="voice-model-card-title">
+                    <div className="voice-model-name-row">
+                      <span className="voice-model-name">{model.name}</span>
+                      {model.recommended && <span className="voice-model-badge">推荐</span>}
+                      {model.selected && <span className="voice-model-badge selected">已选择</span>}
                     </div>
-                    <div className="progress-bar-mini">
-                      <div className="fill" style={{ width: `${whisperDownloadProgress}%` }}></div>
+                    <div className="voice-model-meta">{model.size} · {model.speed} · {model.quality}</div>
+                  </div>
+                  <span className={`voice-model-state ${stateClass}`}>{stateText}</span>
+                </div>
+
+                <p className="voice-model-desc">{model.description}</p>
+
+                {downloading && (
+                  <div className="voice-model-progress" data-voice-model-progress>
+                    <div className="voice-model-progress-row">
+                      <span>正在下载模型</span>
+                      <span className="percent">{Math.round(percent)}%</span>
+                    </div>
+                    {progress && progress.total > 0 && (
+                      <div className="voice-model-progress-detail">
+                        {formatBytes(progress.downloaded)} / {formatBytes(progress.total)}
+                        {progress.speed > 0 && <span className="speed">({formatBytes(progress.speed)}/s)</span>}
+                      </div>
+                    )}
+                    <div
+                      className="progress-bar-mini"
+                      role="progressbar"
+                      aria-label={`${model.name} 模型下载进度`}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={Math.round(percent)}
+                    >
+                      <div className="fill" style={{ width: `${Math.max(0, Math.min(100, percent))}%` }} />
                     </div>
                   </div>
                 )}
-              </div>
-            )}
 
-            <div className="model-directory-control">
-              <input
-                type="text"
-                value={resolvedWhisperModelPath}
-                readOnly
-                placeholder="默认目录"
-                title={resolvedWhisperModelPath || '默认目录'}
-              />
-              <button className="btn btn-secondary btn-sm" onClick={handleSelectWhisperModelDir} title="选择自定义目录">
-                <FolderOpen size={14} /> 选择自定义目录
-              </button>
-              <button className="btn btn-secondary btn-sm" onClick={handleResetWhisperModelDir} disabled={!whisperModelDir} title="恢复默认">
-                <RotateCcw size={14} /> 恢复默认
-              </button>
-            </div>
+                {model.downloadError && !downloading && (
+                  <div className="voice-model-error">{model.downloadError}</div>
+                )}
+
+                <div className="voice-model-card-actions">
+                  {model.downloaded && !model.selected && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      disabled={Boolean(voiceModelAction)}
+                      onClick={() => handleSelectVoiceModel(model.id)}
+                    >
+                      {actionBusy && voiceModelAction?.type === 'select' ? '选择中...' : '选择'}
+                    </button>
+                  )}
+                  {!model.downloaded && !downloading && (
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      disabled={Boolean(voiceModelAction)}
+                      onClick={() => handleDownloadWhisperModel(model.id)}
+                    >
+                      下载
+                    </button>
+                  )}
+                  {(model.deletable || downloading) && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm danger"
+                      disabled={actionBusy && voiceModelAction?.type === 'delete'}
+                      onClick={() => handleDeleteVoiceModel(model)}
+                    >
+                      {actionBusy && voiceModelAction?.type === 'delete'
+                        ? '删除中...'
+                        : downloading
+                          ? '停止并删除'
+                          : '删除'}
+                    </button>
+                  )}
+                </div>
+              </article>
+            )
+          })}
+        </div>
+
+        <div className="setting-control vertical has-border voice-model-storage">
+          <div className="voice-model-storage-label">模型存储目录</div>
+          <div className="model-directory-control">
+            <input
+              type="text"
+              value={resolvedWhisperModelPath}
+              readOnly
+              placeholder="默认目录"
+              title={resolvedWhisperModelPath || '默认目录'}
+            />
+            <button className="btn btn-secondary btn-sm" onClick={handleSelectWhisperModelDir} title="选择自定义目录">
+              <FolderOpen size={14} /> 选择自定义目录
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={handleResetWhisperModelDir} disabled={!whisperModelDir} title="恢复默认">
+              <RotateCcw size={14} /> 恢复默认
+            </button>
           </div>
         </div>
       </div>

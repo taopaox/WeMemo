@@ -1536,9 +1536,41 @@ export interface ElectronAPI {
     onProgress: (callback: (payload: ExportProgress) => void) => () => void
   }
   whisper: {
-    downloadModel: () => Promise<{ success: boolean; modelPath?: string; tokensPath?: string; error?: string }>
-    getModelStatus: () => Promise<{ success: boolean; exists?: boolean; modelPath?: string; tokensPath?: string; sizeBytes?: number; error?: string }>
-    onDownloadProgress: (callback: (payload: { modelName: string; downloadedBytes: number; totalBytes?: number; percent?: number }) => void) => () => void
+    downloadModel: (modelId?: string) => Promise<{ success: boolean; modelPath?: string; tokensPath?: string; error?: string }>
+    getModelStatus: (modelId?: string) => Promise<{
+      success: boolean
+      exists?: boolean
+      selectedModel?: string
+      modelsRoot?: string
+      modelPath?: string
+      tokensPath?: string
+      encoderPath?: string
+      decoderPath?: string
+      sizeBytes?: number
+      models?: Array<{
+        id: string
+        name: string
+        engine: 'sensevoice' | 'whisper'
+        size: string
+        sizeBytes: number
+        speed: string
+        quality: string
+        description: string
+        recommended?: boolean
+        downloaded: boolean
+        selected: boolean
+        deletable: boolean
+        downloadable: boolean
+        downloadStatus: 'idle' | 'running' | 'error'
+        downloadPercent?: number
+        downloadError?: string
+        path?: string
+      }>
+      error?: string
+    }>
+    selectModel: (modelId: string) => Promise<{ success: boolean; selectedModel?: string; error?: string }>
+    deleteModel: (modelId: string) => Promise<{ success: boolean; selectedModel?: string; error?: string }>
+    onDownloadProgress: (callback: (payload: { modelId?: string; modelName: string; downloadedBytes: number; totalBytes?: number; percent?: number; speed?: number }) => void) => () => void
   }
   payments: {
     list: (query?: {
