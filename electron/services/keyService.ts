@@ -5,6 +5,7 @@ import { execFile, spawn } from 'child_process'
 import { promisify } from 'util'
 import os from 'os'
 import crypto from 'crypto'
+import { captureDbKeyFromPackage } from './packageKeyCapture'
 
 const execFileAsync = promisify(execFile)
 
@@ -747,76 +748,14 @@ export class KeyService {
     return true
   }
 
-  // --- DB Key Logic (core hook/poll flow unchanged) ---
+  // --- DB Key Logic ---
 
   async autoGetDbKey(
-      timeoutMs = 60_000,
+      timeoutMs = 180_000,
       onStatus?: (message: string, level: number) => void
   ): Promise<DbKeyResult> {
     if (!this.ensureWin32()) return { success: false, error: '仅支持 Windows' }
-    if (!this.ensureLoaded()) return { success: false, error: 'wx_key.dll 未加载' }
-    if (!this.ensureKernel32()) return { success: false, error: 'Kernel32 Init Failed' }
-
-    const logs: string[] = []
-    const deadline = Date.now() + timeoutMs
-    onStatus?.('正在查找微信进程...', 0)
-    let pid = await this.findWeChatPid()
-    if (!pid) {
-      const err = '未找到微信进程，请先启动微信'
-      onStatus?.(err, 2)
-      return { success: false, error: err }
-    }
-    let lastAttemptLoginRequiredDetected = false
-
-    while (pid && this.getRemainingMs(deadline) > 0) {
-      onStatus?.(`检测到微信窗口 (PID: ${pid})，正在获取...`, 0)
-      onStatus?.('正在检测微信界面组件...', 0)
-      await this.waitForWeChatWindowComponents(pid, Math.min(15000, this.getRemainingMs(deadline)))
-
-      if (!await this.isWeChatPidActive(pid)) {
-        pid = await this.waitForProcessRestart(deadline, onStatus)
-        continue
-      }
-
-      const ok = this.initHook(pid)
-      if (!ok) {
-        if (!await this.isWeChatPidActive(pid)) {
-          this.cleanupDbKeyHook()
-          pid = await this.waitForProcessRestart(deadline, onStatus)
-          continue
-        }
-        return { success: false, error: this.buildInitHookError(), logs }
-      }
-
-      let pollResult: DbKeyPollResult
-      try {
-        pollResult = await this.pollDbKeyFromHook(pid, deadline, logs, onStatus)
-      } finally {
-        this.cleanupDbKeyHook()
-      }
-
-      lastAttemptLoginRequiredDetected = pollResult.loginRequiredDetected
-      if (pollResult.status === 'success') {
-        return { success: true, key: pollResult.key, logs }
-      }
-      if (pollResult.status === 'process-ended') {
-        lastAttemptLoginRequiredDetected = false
-        pid = await this.waitForProcessRestart(deadline, onStatus)
-        continue
-      }
-      break
-    }
-
-    const loginRequired = await this.detectLoginRequiredForLastPid(pid, lastAttemptLoginRequiredDetected)
-    if (loginRequired) {
-      return {
-        success: false,
-        error: '微信已启动但尚未完成登录，请先在微信客户端完成登录后再重试自动获取密钥。',
-        logs
-      }
-    }
-
-    return { success: false, error: '获取密钥超时', logs }
+    return captureDbKeyFromPackage(timeoutMs, onStatus)
   }
 
   private cleanWxid(wxid: string): string {

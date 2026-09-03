@@ -249,11 +249,29 @@
         "from": "public/icon.png",
         "to": "icon.png"
       },
-      {
-        "from": "electron/assets/wasm/",
-        "to": "assets/wasm/"
-      }
-    ],
+        {
+          "from": "electron/assets/wasm/",
+          "to": "assets/wasm/"
+        },
+        {
+          "from": "packages/wechat-key-mac",
+          "to": "packages/wechat-key-mac",
+          "filter": [
+            "**/*",
+            "!**/__pycache__/**",
+            "!**/*.pyc"
+          ]
+        },
+        {
+          "from": "packages/wechat-key-win",
+          "to": "packages/wechat-key-win",
+          "filter": [
+            "**/*",
+            "!**/__pycache__/**",
+            "!**/*.pyc"
+          ]
+        }
+      ],
     "files": [
       "dist/**/*",
       "dist-electron/**/*"

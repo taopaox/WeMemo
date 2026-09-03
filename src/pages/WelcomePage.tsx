@@ -67,12 +67,10 @@ const normalizeDbKeyStatusMessage = (message: string): string => {
 }
 
 const isDbKeyReadyMessage = (message: string): boolean => {
-  if (isWindows) {
-    return message.includes('现在可以登录')
-      || message.includes('Hook安装成功')
-      || message.includes('已准备就绪，现在登录微信或退出登录后重新登录微信')
-  }
   return message.includes('现在可以登录')
+    || message.includes('监控已就绪')
+    || message.includes('Hook安装成功')
+    || message.includes('已准备就绪，现在登录微信或退出登录后重新登录微信')
 }
 
 const pickLatestWxid = (
@@ -507,6 +505,7 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
           result.error?.includes('启动微信失败') ||
           result.error?.includes('未能自动启动微信') ||
           result.error?.includes('未找到微信进程') ||
+          result.error?.includes('未找到运行中的微信') ||
           result.error?.includes('微信进程未运行')
         ) {
           setIsManualStartPrompt(true)
@@ -1054,7 +1053,7 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
                 <div className="key-actions">
                   {isManualStartPrompt ? (
                     <div className="manual-prompt">
-                      <p>未能自动启动微信，请手动启动微信，看到登录窗口后点击下方确认</p>
+                      <p>{isWindows ? '未找到已登录的微信进程，请先打开并登录微信，然后点击下方确认' : '未能自动启动微信，请手动启动微信，看到登录窗口后点击下方确认'}</p>
                       <button className="btn btn-primary" onClick={handleManualConfirm}>
                         我已看到登录窗口，继续
                       </button>
@@ -1230,12 +1229,26 @@ function WelcomePage({ standalone = false }: WelcomePageProps) {
         <ConfirmDialog
             open={showDbKeyConfirm}
             title="开始获取数据库密钥"
-            message={`当开始获取后 WeMemo 将会执行准备操作。
-${isLinux ? `
+            message={isMac
+              ? `将使用开源捕获器临时备份并 ad-hoc 重签微信（去掉 hardened runtime），以便读取进程内存。
+
+请先确认：
+1. 已关闭 SIP（恢复模式执行 csrutil disable）
+2. 微信停在登录界面（若开了自动登录，请先关掉并退出账号）
+3. 授权时输入本机密码；提示条变绿后再在微信里登录
+
+完成后会自动恢复原版腾讯签名的微信。`
+              : isWindows
+                ? `将扫描已运行微信进程的内存来提取数据库密钥。
+
+请先打开微信并完成登录，然后再点击确认。
+本机需要已安装 Python 3.9+（首次可能会自动安装 pymem / yara-python 等依赖）。`
+                : `当开始获取后 WeMemo 将会执行准备操作。
+
 【⚠️ Linux 用户特别注意】
 如果您在微信里勾选了“自动登录”，请务必先关闭自动登录，然后再点击下方确认！
 （因为授权弹窗输入密码需要时间，若自动登录太快会导致获取失败）
-` : ''}
+
 当 WeMemo 内的提示条变为绿色显示允许登录或看到来自 WeMemo 的登录通知时，请在手机上确认登录微信。`}
             onConfirm={handleDbKeyConfirm}
             onCancel={() => setShowDbKeyConfirm(false)}

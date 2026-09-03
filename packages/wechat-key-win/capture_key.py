@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import json
 import os
 import re
 import sys
@@ -38,16 +39,38 @@ class CaptureError(RuntimeError):
     pass
 
 
+JSON_MODE = False
+
+
+def emit_status(msg: str, level: int = 0) -> None:
+    if JSON_MODE:
+        print(json.dumps({"event": "status", "message": msg, "level": level}, ensure_ascii=False), flush=True)
+        return
+    prefix = {0: "[*]", 1: "[+]", 2: "[!]"}[level]
+    print(f"{prefix} {msg}", flush=True)
+
+
+def emit_result(*, success: bool, db_key: str | None = None, error: str | None = None) -> None:
+    if not JSON_MODE:
+        return
+    payload: dict = {"event": "result", "success": success}
+    if db_key:
+        payload["db_key"] = db_key
+    if error:
+        payload["error"] = error
+    print(json.dumps(payload, ensure_ascii=False), flush=True)
+
+
 def log(msg: str) -> None:
-    print(f"[*] {msg}", flush=True)
+    emit_status(msg, 0)
 
 
 def ok(msg: str) -> None:
-    print(f"[+] {msg}", flush=True)
+    emit_status(msg, 1)
 
 
 def warn(msg: str) -> None:
-    print(f"[!] {msg}", flush=True)
+    emit_status(msg, 2)
 
 
 # --------------------------------------------------------------------------- #
@@ -256,11 +279,12 @@ def capture(args: argparse.Namespace) -> int:
             continue
         if raw_hex:
             final = key_v4.xor_raw_key(bytes.fromhex(raw_hex), internal).hex()
-            print()
-            ok("成功捕获数据库密钥（已通过 page1 校验）:")
-            print(final)
+            ok("成功捕获数据库密钥（已通过 page1 校验）")
+            if not JSON_MODE:
+                print()
+                print(final)
+            emit_result(success=True, db_key=final)
             if args.output:
-                import json
                 Path(args.output).expanduser().write_text(
                     json.dumps({"db_key": final, "database": str(database),
                                 "method": "key_v4"}, ensure_ascii=False, indent=2)
@@ -277,14 +301,21 @@ def main() -> int:
     parser.add_argument("--dll", help="Weixin.dll 或微信安装目录（默认自动查找）")
     parser.add_argument("--internal-db-key", help="手动提供 64 位十六进制 internal_db_key（跳过 DLL 扫描）")
     parser.add_argument("--output", help="把密钥写入该 JSON 文件")
+    parser.add_argument("--json", action="store_true", help="向 stdout 输出 JSON 事件（供 Electron 调用）")
     args = parser.parse_args()
+    global JSON_MODE
+    JSON_MODE = bool(args.json)
     try:
         return capture(args)
     except CaptureError as exc:
-        print(f"\n[-] {exc}", file=sys.stderr)
+        emit_result(success=False, error=str(exc))
+        if not JSON_MODE:
+            print(f"\n[-] {exc}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
-        print("\n[-] 已取消", file=sys.stderr)
+        emit_result(success=False, error="已取消")
+        if not JSON_MODE:
+            print("\n[-] 已取消", file=sys.stderr)
         return 130
 
 

@@ -49,21 +49,42 @@ VMADDR_RE = re.compile(r"^\s*vmaddr\s+(0x[0-9a-fA-F]+)\s*$")
 VMMAP_TEXT_RE = re.compile(r"^__TEXT\s+([0-9a-fA-F]+)-[0-9a-fA-F]+\s+.*?\s+(/.*)$")
 PASSPHRASE_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
+JSON_MODE = False
+
 
 class CaptureError(RuntimeError):
     pass
 
 
+def emit_status(msg: str, level: int = 0) -> None:
+    if JSON_MODE:
+        print(json.dumps({"event": "status", "message": msg, "level": level}, ensure_ascii=False), flush=True)
+        return
+    prefix = {0: "[*]", 1: "[+]", 2: "[!]"}[level]
+    print(f"{prefix} {msg}", flush=True)
+
+
+def emit_result(*, success: bool, db_key: str | None = None, error: str | None = None) -> None:
+    if not JSON_MODE:
+        return
+    payload: dict = {"event": "result", "success": success}
+    if db_key:
+        payload["db_key"] = db_key
+    if error:
+        payload["error"] = error
+    print(json.dumps(payload, ensure_ascii=False), flush=True)
+
+
 def log(msg: str) -> None:
-    print(f"[*] {msg}", flush=True)
+    emit_status(msg, 0)
 
 
 def ok(msg: str) -> None:
-    print(f"[+] {msg}", flush=True)
+    emit_status(msg, 1)
 
 
 def warn(msg: str) -> None:
-    print(f"[!] {msg}", flush=True)
+    emit_status(msg, 2)
 
 
 def run(args: list[str], *, timeout: float = 60, check: bool = True) -> subprocess.CompletedProcess:
@@ -422,15 +443,18 @@ def capture(args: argparse.Namespace) -> int:
     try:
         log("启动微信 ...")
         launch_wechat()
-        print()
-        print("=" * 60)
-        print("  请确认微信停在【登录界面】（若已自动登录，请先退出账号）。")
-        print("  然后回到这里按回车开始监控；监控启动后再在微信里登录。")
-        print("=" * 60)
-        try:
-            input("  准备好后按回车开始捕获 > ")
-        except EOFError:
-            pass
+        if args.no_prompt:
+            log("请确认微信停在登录界面（若已自动登录请先退出账号）")
+        else:
+            print()
+            print("=" * 60)
+            print("  请确认微信停在【登录界面】（若已自动登录，请先退出账号）。")
+            print("  然后回到这里按回车开始监控；监控启动后再在微信里登录。")
+            print("=" * 60)
+            try:
+                input("  准备好后按回车开始捕获 > ")
+            except EOFError:
+                pass
 
         deadline = time.monotonic() + 30
         pids: list[int] = []
@@ -448,7 +472,7 @@ def capture(args: argparse.Namespace) -> int:
         bp_addr = text_base + (stub_addr - text_vmaddr) + 8
         ok(f"运行时 __TEXT 基址={hex(text_base)}  断点地址={hex(bp_addr)}")
 
-        log("监控已就绪，请现在在微信里登录 ...")
+        log("监控已就绪，现在可以登录微信。请在微信中完成登录。")
         payload = run_helper_capture(helper, pid, stub_addr, bp_addr, database, args.timeout)
 
         key = str(payload.get("db_key") or "").strip().lower()
@@ -457,9 +481,11 @@ def capture(args: argparse.Namespace) -> int:
         if not payload.get("validated"):
             raise CaptureError("候选密钥未通过数据库校验")
 
-        print()
-        ok("成功捕获数据库密钥（已通过 page1 HMAC 校验）:")
-        print(key)
+        ok("成功捕获数据库密钥（已通过 page1 HMAC 校验）")
+        if not JSON_MODE:
+            print()
+            print(key)
+        emit_result(success=True, db_key=key)
         if args.output:
             Path(args.output).expanduser().write_text(
                 json.dumps({"db_key": key, "database": str(database),
@@ -487,14 +513,22 @@ def main() -> int:
     parser.add_argument("--timeout", type=int, default=300, help="等待登录触发 PBKDF 的秒数（默认 300）")
     parser.add_argument("--output", help="把密钥写入该 JSON 文件")
     parser.add_argument("--keep-resigned", action="store_true", help="捕获后不还原原版微信（调试用）")
+    parser.add_argument("--json", action="store_true", help="向 stdout 输出 JSON 事件（供 Electron 调用）")
+    parser.add_argument("--no-prompt", action="store_true", help="跳过终端回车确认，启动微信后直接开始监控")
     args = parser.parse_args()
+    global JSON_MODE
+    JSON_MODE = bool(args.json)
     try:
         return capture(args)
     except CaptureError as exc:
-        print(f"\n[-] {exc}", file=sys.stderr)
+        emit_result(success=False, error=str(exc))
+        if not JSON_MODE:
+            print(f"\n[-] {exc}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
-        print("\n[-] 已取消", file=sys.stderr)
+        emit_result(success=False, error="已取消")
+        if not JSON_MODE:
+            print("\n[-] 已取消", file=sys.stderr)
         return 130
 
 

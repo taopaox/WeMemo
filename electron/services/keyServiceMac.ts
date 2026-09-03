@@ -5,6 +5,7 @@ import { execFile, spawn } from 'child_process'
 import { promisify } from 'util'
 import crypto from 'crypto'
 import { homedir } from 'os'
+import { captureDbKeyFromPackage } from './packageKeyCapture'
 
 type DbKeyResult = { success: boolean; key?: string; error?: string; logs?: string[] }
 type ImageKeyResult = { success: boolean; xorKey?: number; aesKey?: string; verified?: boolean; error?: string }
@@ -160,11 +161,10 @@ export class KeyServiceMac {
   }
 
   async autoGetDbKey(
-    timeoutMs = 60_000,
+    timeoutMs = 180_000,
     onStatus?: (message: string, level: number) => void
   ): Promise<DbKeyResult> {
     try {
-      // 检测 SIP 状态
       const sipStatus = await this.checkSipStatus()
       if (sipStatus.enabled) {
         return {
@@ -173,41 +173,13 @@ export class KeyServiceMac {
         }
       }
 
-      onStatus?.('正在获取数据库密钥...', 0)
-      onStatus?.('正在请求管理员授权并执行 helper...', 0)
-      let parsed: { success: boolean; key?: string; code?: string; detail?: string; raw: string }
-      try {
-        const elevatedResult = await this.getDbKeyByHelperElevated(timeoutMs, onStatus)
-        parsed = this.parseDbKeyResult(elevatedResult)
-        console.log('[KeyServiceMac] GetDbKey elevated returned:', parsed.raw)
-      } catch (e: any) {
-        const msg = `${e?.message || e}`
-        if (msg.includes('(-128)') || msg.includes('User canceled')) {
-          return { success: false, error: '已取消管理员授权' }
-        }
-        throw e
-      }
-
-      if (!parsed.success) {
-        const errorMsg = this.enrichDbKeyErrorMessage(
-          this.mapDbKeyErrorMessage(parsed.code, parsed.detail),
-          parsed.code,
-          parsed.detail
-        )
-        onStatus?.(errorMsg, 2)
-        return { success: false, error: errorMsg }
-      }
-
-      this.resetRestrictedFailureState()
-      onStatus?.('密钥获取成功', 1)
-      return { success: true, key: parsed.key }
+      onStatus?.('正在通过开源捕获器获取数据库密钥...', 0)
+      return captureDbKeyFromPackage(timeoutMs, onStatus)
     } catch (e: any) {
       console.error('[KeyServiceMac] Error:', e)
-      console.error('[KeyServiceMac] Stack:', e.stack)
       const rawError = `${e?.message || e || ''}`.trim()
-      const resolvedError = this.resolveUnexpectedDbKeyErrorMessage(rawError)
-      onStatus?.(resolvedError, 2)
-      return { success: false, error: resolvedError }
+      onStatus?.(rawError || '自动获取密钥失败', 2)
+      return { success: false, error: rawError || '自动获取密钥失败' }
     }
   }
 

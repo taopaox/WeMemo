@@ -1392,6 +1392,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
           result.error?.includes('启动微信失败') ||
           result.error?.includes('未能自动启动微信') ||
           result.error?.includes('未找到微信进程') ||
+          result.error?.includes('未找到运行中的微信') ||
           result.error?.includes('微信进程未运行')
         ) {
           setIsManualStartPrompt(true)
@@ -2390,7 +2391,13 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
 
       <div className="form-group">
         <label>解密密钥</label>
-        <span className="form-hint">64位十六进制密钥</span>
+        <span className="form-hint">
+          {isMac
+            ? '64 位十六进制密钥。自动获取会临时重签微信并要求登录，需关闭 SIP。'
+            : isWindows
+              ? '64 位十六进制密钥。自动获取会扫描已登录微信的进程内存，需安装 Python 3.9+。'
+              : '64位十六进制密钥'}
+        </span>
         <div className="input-with-toggle">
           <input
             type={showDecryptKey ? 'text' : 'password'}
@@ -2411,7 +2418,7 @@ function SettingsPage({ onClose }: SettingsPageProps = {}) {
         </div>
         {isManualStartPrompt ? (
           <div className="manual-prompt">
-            <p className="prompt-text">未能自动启动微信，请手动启动微信，看到登录窗口后点击下方确认</p>
+            <p className="prompt-text">{isWindows ? '未找到已登录的微信进程，请先打开并登录微信，然后点击下方确认' : '未能自动启动微信，请手动启动微信，看到登录窗口后点击下方确认'}</p>
             <button className="btn btn-primary btn-sm" onClick={handleManualConfirm}>
               我已看到登录窗口，继续检测
             </button>
