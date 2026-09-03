@@ -556,7 +556,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
 
-  // 朋友圈
+  // 转账与红包
+  payments: {
+    list: (query?: {
+      q?: string
+      kind?: 'all' | 'transfer' | 'redpacket'
+      status?: 'all' | 'pending' | 'received' | 'returned' | 'expired' | 'unknown'
+      limit?: number
+      offset?: number
+    }) => ipcRenderer.invoke('payments:list', query),
+    export: (query: {
+      filePath: string
+      format: 'json' | 'csv'
+      q?: string
+      kind?: 'all' | 'transfer' | 'redpacket'
+      status?: 'all' | 'pending' | 'received' | 'returned' | 'expired' | 'unknown'
+    }) => ipcRenderer.invoke('payments:export', query)
+  },
   sns: {
     getTimeline: (limit: number, offset: number, usernames?: string[], keyword?: string, startTime?: number, endTime?: number) =>
       ipcRenderer.invoke('sns:getTimeline', limit, offset, usernames, keyword, startTime, endTime),

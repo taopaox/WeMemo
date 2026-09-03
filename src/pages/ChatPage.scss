@@ -1337,14 +1337,24 @@
     .hongbao-greeting {
       font-size: 15px;
       font-weight: 500;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
       text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    }
+
+    .hongbao-status {
+      font-size: 12px;
+      opacity: 0.9;
+      margin-bottom: 4px;
     }
 
     .hongbao-label {
       font-size: 12px;
       opacity: 0.8;
     }
+  }
+
+  &.received {
+    background: linear-gradient(135deg, #f3c7a4 0%, #e8b48a 100%);
   }
 }
 
@@ -4412,7 +4422,12 @@
   cursor: default;
 
   &.received {
-    background: linear-gradient(135deg, #b8b8b8 0%, #a8a8a8 100%);
+    background: linear-gradient(135deg, #fdce9d 0%, #f0b67a 100%);
+  }
+
+  &.returned,
+  &.expired {
+    background: linear-gradient(135deg, #c4c4c4 0%, #b0b0b0 100%);
   }
 
   .transfer-icon {

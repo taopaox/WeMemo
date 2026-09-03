@@ -1536,6 +1536,70 @@ export interface ElectronAPI {
     getModelStatus: () => Promise<{ success: boolean; exists?: boolean; modelPath?: string; tokensPath?: string; sizeBytes?: number; error?: string }>
     onDownloadProgress: (callback: (payload: { modelName: string; downloadedBytes: number; totalBytes?: number; percent?: number }) => void) => () => void
   }
+  payments: {
+    list: (query?: {
+      q?: string
+      kind?: 'all' | 'transfer' | 'redpacket'
+      status?: 'all' | 'pending' | 'received' | 'returned' | 'expired' | 'unknown'
+      limit?: number
+      offset?: number
+    }) => Promise<{
+      success: boolean
+      items?: Array<{
+        kind: 'transfer' | 'redpacket'
+        transferId?: string
+        transactionId?: string
+        sendId?: string
+        messageServerId: number
+        secondMessageServerId?: number
+        sessionName: string
+        sessionContact?: { username: string; displayName: string; avatarUrl?: string; isGroup?: boolean }
+        paySubType?: number
+        payPayer?: string
+        payReceiver?: string
+        payerContact?: { username: string; displayName: string; avatarUrl?: string; isGroup?: boolean }
+        receiverContact?: { username: string; displayName: string; avatarUrl?: string; isGroup?: boolean }
+        senderUserName?: string
+        senderContact?: { username: string; displayName: string; avatarUrl?: string; isGroup?: boolean }
+        beginTransferTime?: number
+        beginTransferTimeText?: string
+        invalidTime?: number
+        lastUpdateTime?: number
+        lastUpdateTimeText?: string
+        transferState?: 'pending' | 'received' | 'returned' | 'expired' | 'unknown'
+        transferStatus?: string
+        transferMemo?: string
+        amount?: string
+        amountText?: string
+        amountUnavailableReason?: string
+        hbType?: number
+        hbStatus?: number
+        receiveStatus?: number
+        sceneId?: number
+        nativeUrl?: string
+        sortTime: number
+        messageCreateTime?: number
+        messageCreateTimeText?: string
+        messageSummary?: string
+      }>
+      total?: number
+      hasMore?: boolean
+      stats?: {
+        transferCount: number
+        redPacketCount: number
+        transferSessions: number
+        redPacketSessions: number
+      }
+      error?: string
+    }>
+    export: (query: {
+      filePath: string
+      format: 'json' | 'csv'
+      q?: string
+      kind?: 'all' | 'transfer' | 'redpacket'
+      status?: 'all' | 'pending' | 'received' | 'returned' | 'expired' | 'unknown'
+    }) => Promise<{ success: boolean; filePath?: string; error?: string }>
+  }
   sns: {
     getTimeline: (limit: number, offset: number, usernames?: string[], keyword?: string, startTime?: number, endTime?: number) => Promise<{
       success: boolean

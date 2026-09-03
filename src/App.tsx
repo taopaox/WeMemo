@@ -47,6 +47,7 @@ const AnnualReportWindow = lazy(() => import('./pages/AnnualReportWindow'))
 const DualReportPage = lazy(() => import('./pages/DualReportPage'))
 const DualReportWindow = lazy(() => import('./pages/DualReportWindow'))
 const ExportPage = lazy(() => import('./pages/Export/ExportPage'))
+const PaymentsPage = lazy(() => import('./pages/PaymentsPage'))
 
 function RouteStateRedirect({ to }: { to: string }) {
   const location = useLocation()
@@ -796,6 +797,7 @@ function App() {
                 <Route path="/insight-inbox" element={<InsightInboxPage />} />
                 <Route path="/biz" element={<BizPage />} />
                 <Route path="/contacts" element={<ContactsPage />} />
+                <Route path="/payments" element={<PaymentsPage />} />
                 <Route path="/resources" element={<ResourcesPage />} />
                 <Route path="/backup" element={<BackupPage />} />
                 <Route path="/chat-history/:sessionId/:messageId" element={<ChatHistoryPage />} />

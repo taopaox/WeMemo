@@ -12052,10 +12052,12 @@ function MessageBubble({
       }
 
       if (kind === 'red-packet') {
-        // 专属红包卡片
         const greeting = q('receivertitle') || q('sendertitle') || ''
+        const receiveStatus = q('receivestatus')
+        const statusText = `${greeting} ${q('receiverdes') || ''} ${q('senderdes') || ''}`
+        const isReceived = receiveStatus === '1' || statusText.includes('已领取') || statusText.includes('已被领完')
         return (
-          <div className="hongbao-message">
+          <div className={`hongbao-message ${isReceived ? 'received' : ''}`}>
             <div className="hongbao-icon">
               <svg width="32" height="32" viewBox="0 0 40 40" fill="none">
                 <rect x="4" y="6" width="32" height="28" rx="4" fill="white" fillOpacity="0.3" />
@@ -12066,6 +12068,7 @@ function MessageBubble({
             </div>
             <div className="hongbao-info">
               <div className="hongbao-greeting">{greeting || '恭喜发财，大吉大利'}</div>
+              <div className="hongbao-status">{isReceived ? '已领取' : '领取红包'}</div>
               <div className="hongbao-label">微信红包</div>
             </div>
           </div>
@@ -12399,26 +12402,49 @@ function MessageBubble({
       // 转账消息 (type=2000)
       if (appMsgType === '2000') {
         try {
-          // 使用外层已解析好的 parsedDoc（已去除 wxid 前缀）
           const feedesc = parsedDoc?.querySelector('feedesc')?.textContent || ''
           const payMemo = parsedDoc?.querySelector('pay_memo')?.textContent || ''
           const paysubtype = parsedDoc?.querySelector('paysubtype')?.textContent || '1'
-
-          // paysubtype: 1=待收款, 3=已收款
-          const isReceived = paysubtype === '3'
-
-          // 如果 feedesc 为空，使用 title 作为降级
+          const receiveStatus = parsedDoc?.querySelector('receivestatus')?.textContent || ''
+          const senderTitle = parsedDoc?.querySelector('sendertitle')?.textContent || ''
+          const receiverTitle = parsedDoc?.querySelector('receivertitle')?.textContent || ''
+          const invalidTimeRaw = parsedDoc?.querySelector('invalidtime')?.textContent || ''
+          const invalidTime = Number.parseInt(invalidTimeRaw, 10)
+          const invalidMs = Number.isFinite(invalidTime) && invalidTime > 0
+            ? (invalidTime > 1e12 ? invalidTime : invalidTime * 1000)
+            : 0
+          const statusBlob = `${senderTitle} ${receiverTitle} ${payMemo}`
+          const isReturned = paysubtype === '4' || paysubtype === '9' || receiveStatus === '2' || statusBlob.includes('退还') || statusBlob.includes('退回')
+          const isExpired = paysubtype === '10' || receiveStatus === '3' || statusBlob.includes('过期')
+            || ((paysubtype === '1' || paysubtype === '2') && invalidMs > 0 && invalidMs <= Date.now())
+          const isReceived = !isReturned && !isExpired && (paysubtype === '3' || receiveStatus === '1' || statusBlob.includes('已收款') || statusBlob.includes('已被接收'))
+          const statusLabel = isReturned
+            ? (paysubtype === '9' ? '已被退还' : '已退还')
+            : isExpired
+              ? '已过期'
+              : isReceived
+                ? (isSent ? '已被接收' : '已收款')
+                : (paysubtype === '8' ? '发起转账' : '待收款')
           const displayAmount = feedesc || title || '微信转账'
-
-          // 构建转账描述：A 转账给 B
           const transferDesc = transferPayerName && transferReceiverName
             ? `${transferPayerName} 转账给 ${transferReceiverName}`
             : undefined
+          const stateClass = isReturned ? 'returned' : isExpired ? 'expired' : isReceived ? 'received' : ''
 
           return (
-            <div className={`transfer-message ${isReceived ? 'received' : ''}`}>
+            <div className={`transfer-message ${stateClass}`}>
               <div className="transfer-icon">
-                {isReceived ? (
+                {isReturned ? (
+                  <svg width="32" height="32" viewBox="0 0 40 40" fill="none">
+                    <circle cx="20" cy="20" r="18" stroke="white" strokeWidth="2" />
+                    <path d="M24 14l-8 6 8 6" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                ) : isExpired ? (
+                  <svg width="32" height="32" viewBox="0 0 40 40" fill="none">
+                    <circle cx="20" cy="20" r="18" stroke="white" strokeWidth="2" />
+                    <path d="M20 12v10M20 28h.01" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+                  </svg>
+                ) : isReceived ? (
                   <svg width="32" height="32" viewBox="0 0 40 40" fill="none">
                     <circle cx="20" cy="20" r="18" stroke="white" strokeWidth="2" />
                     <path d="M12 20l6 6 10-12" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -12434,13 +12460,12 @@ function MessageBubble({
                 <div className="transfer-amount">{displayAmount}</div>
                 {transferDesc && <div className="transfer-desc">{transferDesc}</div>}
                 {payMemo && <div className="transfer-memo">{payMemo}</div>}
-                <div className="transfer-label">{isReceived ? '已收款' : '微信转账'}</div>
+                <div className="transfer-label">{statusLabel}</div>
               </div>
             </div>
           )
         } catch (e) {
           console.error('[Transfer Debug] Parse error:', e)
-          // 解析失败时的降级处理
           const feedesc = title || '微信转账'
           return (
             <div className="transfer-message">

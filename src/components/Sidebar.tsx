@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Home, MessageSquare, BarChart3, FileText, Settings, Download, Aperture, UserCircle, Lock, LockOpen, ChevronUp, FolderClosed, Footprints, Users, ArchiveRestore, Sparkles } from 'lucide-react'
+import { Home, MessageSquare, BarChart3, FileText, Settings, Download, Aperture, UserCircle, Lock, LockOpen, ChevronUp, FolderClosed, Footprints, Users, ArchiveRestore, Sparkles, Wallet } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import * as configService from '../services/config'
 import { onExportSessionStatus, requestExportSessionStatus } from '../services/exportBridge'
@@ -372,6 +372,15 @@ function Sidebar({ collapsed }: SidebarProps) {
           >
             <span className="nav-icon"><FolderClosed size={20} /></span>
             <span className="nav-label">资源浏览</span>
+          </NavLink>
+
+          <NavLink
+            to="/payments"
+            className={`nav-item ${isActive('/payments') ? 'active' : ''}`}
+            title={collapsed ? '转账与红包' : undefined}
+          >
+            <span className="nav-icon"><Wallet size={20} /></span>
+            <span className="nav-label">转账与红包</span>
           </NavLink>
 
           {/* 聊天分析 */}

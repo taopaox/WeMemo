@@ -38,6 +38,7 @@ import { normalizeWeiboCookieInput, weiboService } from './services/social/weibo
 import { bizService } from './services/bizService'
 import { backupService } from './services/backupService'
 import { imageDownloadService } from './services/imageDownloadService'
+import { paymentService } from './services/paymentService'
 
 // 屏幕采集去节流（仅影响通知玻璃的 Chromium 流回退管线；Windows 主路径为
 // 原生面板渲染，不经过 Chromium 采集）：默认桌面采集 CPU 预算限制在 50%，
@@ -3079,6 +3080,26 @@ function registerIpcHandlers() {
 
   ipcMain.handle('chat:exportMyFootprint', async (_, beginTimestamp: number, endTimestamp: number, format: 'csv' | 'json', filePath: string) => {
     return chatService.exportMyFootprint(beginTimestamp, endTimestamp, format, filePath)
+  })
+
+  ipcMain.handle('payments:list', async (_, query?: {
+    q?: string
+    kind?: 'all' | 'transfer' | 'redpacket'
+    status?: 'all' | 'pending' | 'received' | 'returned' | 'expired' | 'unknown'
+    limit?: number
+    offset?: number
+  }) => {
+    return paymentService.listRecords(query)
+  })
+
+  ipcMain.handle('payments:export', async (_, query: {
+    filePath: string
+    format: 'json' | 'csv'
+    q?: string
+    kind?: 'all' | 'transfer' | 'redpacket'
+    status?: 'all' | 'pending' | 'received' | 'returned' | 'expired' | 'unknown'
+  }) => {
+    return paymentService.exportRecords(query)
   })
 
   ipcMain.handle('sns:getTimeline', async (_, limit: number, offset: number, usernames?: string[], keyword?: string, startTime?: number, endTime?: number) => {
