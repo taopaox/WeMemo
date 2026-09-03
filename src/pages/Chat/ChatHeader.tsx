@@ -103,7 +103,7 @@ function ChatHeader({
       ? '正在准备导出模块'
       : '导出当前会话'
   const batchVoiceTitle = isBatchTranscribing
-    ? `${runningBatchVoiceTaskType === 'decrypt' ? '批量语音解密' : '批量转写'}中${batchVoiceProgress?.total ? `：${batchVoiceProgress.current}/${batchVoiceProgress.total}（${Math.round((batchVoiceProgress.current / Math.max(1, batchVoiceProgress.total)) * 100)}%）` : ''}，可在导出页任务中心查看进度`
+    ? `${runningBatchVoiceTaskType === 'decrypt' ? '批量语音解密' : '批量转写'}中${batchVoiceProgress?.total ? `：${batchVoiceProgress.current}/${batchVoiceProgress.total}（${Math.round((batchVoiceProgress.current / Math.max(1, batchVoiceProgress.total)) * 100)}%）` : ''}，可在左侧任务中心查看详情`
     : '批量语音处理'
   const batchVoiceProgressPercent = batchVoiceProgress?.total
     ? Math.max(0, Math.min(100, Math.round((batchVoiceProgress.current / Math.max(1, batchVoiceProgress.total)) * 100)))
@@ -112,7 +112,7 @@ function ChatHeader({
     ? Math.max(0, Math.min(100, Math.round((batchImageDecryptProgress.current / Math.max(1, batchImageDecryptProgress.total)) * 100)))
     : 0
   const batchImageDecryptTitle = isBatchDecrypting
-    ? `批量解密图片中${batchImageDecryptProgress?.total ? `：${batchImageDecryptProgress.current}/${batchImageDecryptProgress.total}（${batchImageDecryptProgressPercent}%）` : ''}，可在导出页任务中心查看进度`
+    ? `批量解密图片中${batchImageDecryptProgress?.total ? `：${batchImageDecryptProgress.current}/${batchImageDecryptProgress.total}（${batchImageDecryptProgressPercent}%）` : ''}，可在左侧任务中心查看详情`
     : '批量解密图片'
 
   return (

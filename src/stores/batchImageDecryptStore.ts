@@ -4,7 +4,7 @@ import {
   registerBackgroundTask,
   updateBackgroundTask
 } from '../services/backgroundTaskMonitor'
-import type { BackgroundTaskSourcePage, BackgroundTaskStatus } from '../types/backgroundTask'
+import type { BackgroundTaskItemInput, BackgroundTaskSourcePage, BackgroundTaskStatus } from '../types/backgroundTask'
 
 interface BatchDecryptTaskControls {
   cancelable?: boolean
@@ -12,6 +12,7 @@ interface BatchDecryptTaskControls {
   onCancel?: () => void | Promise<void>
   onPause?: () => void | Promise<void>
   onResume?: () => void | Promise<void>
+  items?: BackgroundTaskItemInput[]
 }
 
 interface BatchDecryptFinishOptions {
@@ -95,6 +96,7 @@ export const useBatchImageDecryptStore = create<BatchImageDecryptState>((set, ge
       progressText: `${normalizedProgress.current} / ${normalizedProgress.total}`,
       cancelable: controls?.cancelable !== false,
       resumable: controls?.resumable === true,
+      items: controls?.items,
       onCancel: controls?.onCancel,
       onPause: controls?.onPause,
       onResume: controls?.onResume

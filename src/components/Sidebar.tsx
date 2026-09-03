@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Home, MessageSquare, BarChart3, FileText, Settings, Download, Aperture, UserCircle, Lock, LockOpen, ChevronUp, FolderClosed, Footprints, Users, ArchiveRestore, Sparkles, Wallet, Bookmark, Database } from 'lucide-react'
+import { Home, MessageSquare, BarChart3, FileText, Settings, Download, Aperture, UserCircle, Lock, LockOpen, ChevronUp, FolderClosed, Footprints, Users, ArchiveRestore, Sparkles, Wallet, Bookmark, Database, ListTodo } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import * as configService from '../services/config'
 import { onExportSessionStatus, requestExportSessionStatus } from '../services/exportBridge'
+import { subscribeBackgroundTasks } from '../services/backgroundTaskMonitor'
 
 import './Sidebar.scss'
 
@@ -104,6 +105,7 @@ function Sidebar({ collapsed }: SidebarProps) {
   const navigate = useNavigate()
   const [authEnabled, setAuthEnabled] = useState(false)
   const [activeExportTaskCount, setActiveExportTaskCount] = useState(0)
+  const [activeBackgroundTaskCount, setActiveBackgroundTaskCount] = useState(0)
   const [userProfile, setUserProfile] = useState<SidebarUserProfile>({
     wxid: '',
     displayName: DEFAULT_DISPLAY_NAME
@@ -115,6 +117,12 @@ function Sidebar({ collapsed }: SidebarProps) {
   useEffect(() => {
     window.electronAPI.auth.verifyEnabled().then(setAuthEnabled)
   }, [])
+
+  useEffect(() => subscribeBackgroundTasks(tasks => {
+    setActiveBackgroundTaskCount(tasks.filter(task => (
+      task.status === 'running' || task.status === 'pause_requested' || task.status === 'paused' || task.status === 'cancel_requested'
+    )).length)
+  }), [])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -309,6 +317,7 @@ function Sidebar({ collapsed }: SidebarProps) {
     return location.pathname === path || location.pathname.startsWith(`${path}/`)
   }
   const exportTaskBadge = activeExportTaskCount > 99 ? '99+' : `${activeExportTaskCount}`
+  const backgroundTaskBadge = activeBackgroundTaskCount > 99 ? '99+' : `${activeBackgroundTaskCount}`
   const lockActionLabel = authEnabled ? '锁定应用' : '开启应用锁'
 
   return (
@@ -438,6 +447,23 @@ function Sidebar({ collapsed }: SidebarProps) {
             <span className="nav-label">导出</span>
             {!collapsed && activeExportTaskCount > 0 && (
               <span className="nav-badge">{exportTaskBadge}</span>
+            )}
+          </NavLink>
+
+          <NavLink
+            to="/tasks"
+            className={`nav-item ${isActive('/tasks') ? 'active' : ''}`}
+            title={collapsed ? '任务中心' : undefined}
+          >
+            <span className="nav-icon nav-icon-with-badge">
+              <ListTodo size={20} />
+              {collapsed && activeBackgroundTaskCount > 0 && (
+                <span className="nav-badge icon-badge">{backgroundTaskBadge}</span>
+              )}
+            </span>
+            <span className="nav-label">任务中心</span>
+            {!collapsed && activeBackgroundTaskCount > 0 && (
+              <span className="nav-badge">{backgroundTaskBadge}</span>
             )}
           </NavLink>
 

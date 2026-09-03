@@ -4,7 +4,7 @@ import {
   registerBackgroundTask,
   updateBackgroundTask
 } from '../services/backgroundTaskMonitor'
-import type { BackgroundTaskSourcePage, BackgroundTaskStatus } from '../types/backgroundTask'
+import type { BackgroundTaskItemInput, BackgroundTaskSourcePage, BackgroundTaskStatus } from '../types/backgroundTask'
 
 export type BatchVoiceTaskType = 'transcribe' | 'decrypt'
 
@@ -14,6 +14,7 @@ interface BatchVoiceTaskControls {
   onCancel?: () => void | Promise<void>
   onPause?: () => void | Promise<void>
   onResume?: () => void | Promise<void>
+  items?: BackgroundTaskItemInput[]
 }
 
 interface BatchVoiceTaskFinishOptions {
@@ -109,6 +110,7 @@ export const useBatchTranscribeStore = create<BatchTranscribeState>((set, get) =
       progressText: `${normalizedProgress.current} / ${normalizedProgress.total}`,
       cancelable: controls?.cancelable !== false,
       resumable: controls?.resumable === true,
+      items: controls?.items,
       onCancel: controls?.onCancel,
       onPause: controls?.onPause,
       onResume: controls?.onResume

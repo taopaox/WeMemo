@@ -50,6 +50,7 @@ const DualReportWindow = lazy(() => import('./pages/DualReportWindow'))
 const ExportPage = lazy(() => import('./pages/Export/ExportPage'))
 const PaymentsPage = lazy(() => import('./pages/PaymentsPage'))
 const FavoritesPage = lazy(() => import('./pages/FavoritesPage'))
+const TaskCenterPage = lazy(() => import('./pages/TaskCenterPage'))
 
 function RouteStateRedirect({ to }: { to: string }) {
   const location = useLocation()
@@ -795,6 +796,7 @@ function App() {
                 <Route path="/footprint" element={<MyFootprintPage />} />
 
                 <Route path="/export" element={<div className="export-route-anchor" aria-hidden="true" />} />
+                <Route path="/tasks" element={<TaskCenterPage />} />
                 <Route path="/sns" element={<SnsPage />} />
                 <Route path="/insight-inbox" element={<InsightInboxPage />} />
                 <Route path="/biz" element={<BizPage />} />

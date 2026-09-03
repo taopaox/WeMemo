@@ -19,7 +19,6 @@ import { useExportSessions } from './hooks/useExportSessions'
 import { useExportConfig } from './hooks/useExportConfig'
 import { useExportDialog } from './hooks/useExportDialog'
 import { useExportTasks } from './hooks/useExportTasks'
-import { useBackgroundTasks } from './hooks/useBackgroundTasks'
 import { useSessionMetrics } from './hooks/useSessionMetrics'
 import { useAutomationRunner, useAutomationStore } from './hooks/useAutomation'
 import { AutomationModal } from './components/Automation/AutomationModal'
@@ -133,19 +132,6 @@ function ExportPage() {
 
   const { enqueueAutomationTask } = useAutomationRunner(startTask)
   const { addTask } = useAutomationStore()
-
-  const {
-    allTasks: backgroundTasks,
-    pauseTask: pauseBgTask,
-    resumeTask: resumeBgTask,
-    cancelTask: cancelBgTask,
-    clearSettledTasks: clearSettledBgTasks
-  } = useBackgroundTasks()
-  const taskCenterBackgroundTasks = backgroundTasks.filter(task => task.sourcePage === 'export' || task.sourcePage === 'chat')
-
-  const clearCompletedTaskCenterBackgroundTasks = useCallback(() => {
-    clearSettledBgTasks(task => task.sourcePage === 'export' || task.sourcePage === 'chat')
-  }, [clearSettledBgTasks])
 
   // ── 4. Dialog & Exports ──
   const { dialogState, openDialog, closeDialog } = useExportDialog()
@@ -351,17 +337,12 @@ function ExportPage() {
           />
         </section>
 
-        {(exportTasks.length > 0 || taskCenterBackgroundTasks.length > 0) && (
+        {exportTasks.length > 0 && (
           <section className="export-v2-task-panel">
             <TaskCenter
               exportTasks={exportTasks}
               onCancelExportTask={cancelExportTask}
               onClearCompletedExportTasks={clearCompletedExportTasks}
-              backgroundTasks={taskCenterBackgroundTasks}
-              onPauseBackgroundTask={pauseBgTask}
-              onResumeBackgroundTask={resumeBgTask}
-              onCancelBackgroundTask={cancelBgTask}
-              onClearCompletedBackgroundTasks={clearCompletedTaskCenterBackgroundTasks}
             />
           </section>
         )}

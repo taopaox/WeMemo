@@ -23,7 +23,9 @@ import {
   finishBackgroundTask,
   isBackgroundTaskCancelRequested,
   registerBackgroundTask,
-  updateBackgroundTask
+  setBackgroundTaskItems,
+  updateBackgroundTask,
+  updateBackgroundTaskItem
 } from '../services/backgroundTaskMonitor'
 import {
   emitOpenSingleExport,
@@ -72,6 +74,21 @@ interface PendingInSessionSearchPayload {
   firstMsgTime: number
   results: Message[]
 }
+
+type BatchVoiceStatusFilter = 'pending' | 'completed' | 'all'
+
+type BatchVoiceMessage = Message & {
+  hasDecryptedVoiceCache: boolean
+  hasVoiceTranscriptCache: boolean
+}
+
+const isBatchVoiceMessageCompleted = (message: BatchVoiceMessage, taskType: BatchVoiceTaskType): boolean => (
+  taskType === 'decrypt' ? message.hasDecryptedVoiceCache : message.hasVoiceTranscriptCache
+)
+
+const getBatchVoiceDates = (messages: BatchVoiceMessage[]): string[] => Array.from(new Set(
+  messages.map(message => new Date(message.createTime * 1000).toISOString().slice(0, 10))
+)).sort((a, b) => b.localeCompare(a))
 
 interface PendingFootprintJumpPayload {
   sessionId: string
@@ -1861,11 +1878,10 @@ function ChatPage(props: ChatPageProps) {
     finishDecrypt: state.finishDecrypt
   })))
   const [showBatchConfirm, setShowBatchConfirm] = useState(false)
-  const [batchVoiceCount, setBatchVoiceCount] = useState(0)
-  const [batchVoiceMessages, setBatchVoiceMessages] = useState<Message[] | null>(null)
-  const [batchVoiceDates, setBatchVoiceDates] = useState<string[]>([])
+  const [batchVoiceMessages, setBatchVoiceMessages] = useState<BatchVoiceMessage[] | null>(null)
   const [batchSelectedDates, setBatchSelectedDates] = useState<Set<string>>(new Set())
   const [batchVoiceTaskType, setBatchVoiceTaskType] = useState<BatchVoiceTaskType>('transcribe')
+  const [batchVoiceStatusFilter, setBatchVoiceStatusFilter] = useState<BatchVoiceStatusFilter>('pending')
   const [showBatchDecryptConfirm, setShowBatchDecryptConfirm] = useState(false)
   const [batchImageMessages, setBatchImageMessages] = useState<BatchImageDecryptCandidate[] | null>(null)
   const [batchImageDates, setBatchImageDates] = useState<string[]>([])
@@ -6740,21 +6756,20 @@ function ChatPage(props: ChatPageProps) {
       return
     }
 
-    const voiceMessages: Message[] = result.messages
+    const voiceMessages: BatchVoiceMessage[] = result.messages
     if (voiceMessages.length === 0) {
       alert('当前会话没有语音消息')
       return
     }
 
-    const dateSet = new Set<string>()
-    voiceMessages.forEach(m => dateSet.add(new Date(m.createTime * 1000).toISOString().slice(0, 10)))
-    const sortedDates = Array.from(dateSet).sort((a, b) => b.localeCompare(a))
+    const pendingDates = getBatchVoiceDates(
+      voiceMessages.filter(message => !isBatchVoiceMessageCompleted(message, 'transcribe'))
+    )
 
     setBatchVoiceMessages(voiceMessages)
-    setBatchVoiceCount(voiceMessages.length)
-    setBatchVoiceDates(sortedDates)
-    setBatchSelectedDates(new Set(sortedDates))
+    setBatchSelectedDates(new Set(pendingDates))
     setBatchVoiceTaskType('transcribe')
+    setBatchVoiceStatusFilter('pending')
     setShowBatchConfirm(true)
   }, [sessions, currentSessionId, isBatchTranscribing])
 
@@ -6869,9 +6884,13 @@ function ChatPage(props: ChatPageProps) {
       return
     }
 
-    const voiceMessages = messages.filter(m =>
-      selected.has(new Date(m.createTime * 1000).toISOString().slice(0, 10))
-    )
+    const voiceMessages = messages.filter(message => {
+      const date = new Date(message.createTime * 1000).toISOString().slice(0, 10)
+      if (!selected.has(date)) return false
+      if (batchVoiceStatusFilter === 'all') return true
+      const completed = isBatchVoiceMessageCompleted(message, batchVoiceTaskType)
+      return batchVoiceStatusFilter === 'completed' ? completed : !completed
+    })
     if (voiceMessages.length === 0) {
       alert('所选日期下没有语音消息')
       return
@@ -6879,8 +6898,8 @@ function ChatPage(props: ChatPageProps) {
 
     setShowBatchConfirm(false)
     setBatchVoiceMessages(null)
-    setBatchVoiceDates([])
     setBatchSelectedDates(new Set())
+    setBatchVoiceStatusFilter('pending')
 
     const session = sessions.find(s => s.username === currentSessionId)
     if (!session) return
@@ -6927,9 +6946,15 @@ function ChatPage(props: ChatPageProps) {
       }
     }
 
+    const voiceTaskItemId = (message: Message) => `voice-${message.createTime}-${message.localId}`
     startTranscribe(totalVoices, displayNameOrFallback(session.username, session.displayName), taskType, 'chat', {
       cancelable: true,
       resumable: true,
+      items: voiceMessages.map(message => ({
+        id: voiceTaskItemId(message),
+        name: `${new Date(message.createTime * 1000).toLocaleString('zh-CN')} 的语音`,
+        target: `消息 ID ${message.localId}${message.serverIdRaw || message.serverId ? ` · Server ID ${message.serverIdRaw || message.serverId}` : ''}`
+      })),
       onPause: () => {
         controlState.pauseRequested = true
         updateTranscribeTaskStatus(
@@ -6953,6 +6978,7 @@ function ChatPage(props: ChatPageProps) {
         )
       }
     })
+    const voiceBackgroundTaskId = useBatchTranscribeStore.getState().taskId
     updateTranscribeTaskStatus(`正在准备${taskVerb}任务...`, `0 / ${totalVoices}`, 'running')
 
     const runOne = async (msg: Message) => {
@@ -6964,7 +6990,10 @@ function ChatPage(props: ChatPageProps) {
             msg.createTime,
             msg.serverIdRaw || msg.serverId
           )
-          return { success: Boolean(result.success && result.data) }
+          return {
+            success: Boolean(result.success && result.data),
+            error: result.success && result.data ? undefined : (result.error || '语音数据未找到')
+          }
         }
         const result = await window.electronAPI.chat.getVoiceTranscript(
           session.username,
@@ -6972,9 +7001,9 @@ function ChatPage(props: ChatPageProps) {
           msg.createTime,
           msg.serverIdRaw || msg.serverId
         )
-        return { success: result.success }
-      } catch {
-        return { success: false }
+        return { success: result.success, error: result.success ? undefined : (result.error || '转写失败') }
+      } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : String(error) }
       }
     }
 
@@ -6983,6 +7012,18 @@ function ChatPage(props: ChatPageProps) {
         updateTranscribeTaskStatus('正在检查转写模型...', `0 / ${totalVoices}`)
         const modelStatus = await window.electronAPI.whisper.getModelStatus()
         if (!modelStatus?.exists) {
+          if (voiceBackgroundTaskId) {
+            const finishedAt = Date.now()
+            setBackgroundTaskItems(voiceBackgroundTaskId, voiceMessages.map(message => ({
+              id: voiceTaskItemId(message),
+              name: `${new Date(message.createTime * 1000).toLocaleString('zh-CN')} 的语音`,
+              target: `消息 ID ${message.localId}${message.serverIdRaw || message.serverId ? ` · Server ID ${message.serverIdRaw || message.serverId}` : ''}`,
+              status: 'failed',
+              detail: '未开始转写',
+              error: '语音识别模型未下载或未选择',
+              finishedAt
+            })))
+          }
           alert('语音识别模型未下载，请先在设置 → 模型管理中下载并选择模型')
           updateTranscribeTaskStatus('转写模型缺失，任务已停止', `0 / ${totalVoices}`)
           finishTranscribe(0, totalVoices)
@@ -6995,9 +7036,26 @@ function ChatPage(props: ChatPageProps) {
 
       const runOneTracked = async (msg: Message) => {
         if (controlState.cancelRequested) return
+        const itemId = voiceTaskItemId(msg)
+        if (voiceBackgroundTaskId) {
+          updateBackgroundTaskItem(voiceBackgroundTaskId, itemId, {
+            status: 'processing',
+            detail: `正在${taskVerb}`,
+            error: undefined,
+            startedAt: Date.now()
+          })
+        }
         const result = await runOne(msg)
         if (result.success) successCount++
         else failCount++
+        if (voiceBackgroundTaskId) {
+          updateBackgroundTaskItem(voiceBackgroundTaskId, itemId, {
+            status: result.success ? 'completed' : 'failed',
+            detail: result.success ? `${taskVerb}完成` : `${taskVerb}失败`,
+            error: result.error,
+            finishedAt: Date.now()
+          })
+        }
         completedCount++
         updateProgress(completedCount, totalVoices)
       }
@@ -7045,32 +7103,78 @@ function ChatPage(props: ChatPageProps) {
       })
       alert(`批量${taskVerb}失败：${String(error)}`)
     }
-  }, [sessions, currentSessionId, batchSelectedDates, batchVoiceMessages, batchVoiceTaskType, startTranscribe, updateTranscribeTaskStatus, updateProgress, finishTranscribe])
+  }, [sessions, currentSessionId, batchSelectedDates, batchVoiceMessages, batchVoiceTaskType, batchVoiceStatusFilter, startTranscribe, updateTranscribeTaskStatus, updateProgress, finishTranscribe])
 
-  // 批量转写：按日期的消息数量
+  const batchVoiceStatusCounts = useMemo(() => {
+    const messages = batchVoiceMessages || []
+    const completed = messages.filter(message => isBatchVoiceMessageCompleted(message, batchVoiceTaskType)).length
+    return {
+      pending: messages.length - completed,
+      completed,
+      all: messages.length
+    }
+  }, [batchVoiceMessages, batchVoiceTaskType])
+
+  const batchFilteredVoiceMessages = useMemo(() => {
+    const messages = batchVoiceMessages || []
+    if (batchVoiceStatusFilter === 'all') return messages
+    return messages.filter(message => {
+      const completed = isBatchVoiceMessageCompleted(message, batchVoiceTaskType)
+      return batchVoiceStatusFilter === 'completed' ? completed : !completed
+    })
+  }, [batchVoiceMessages, batchVoiceStatusFilter, batchVoiceTaskType])
+
+  const batchVisibleVoiceDates = useMemo(
+    () => getBatchVoiceDates(batchFilteredVoiceMessages),
+    [batchFilteredVoiceMessages]
+  )
+
+  // 批量语音任务：当前状态筛选下，按日期的消息数量
   const batchCountByDate = useMemo(() => {
     const map = new Map<string, number>()
-    if (!batchVoiceMessages) return map
-    batchVoiceMessages.forEach(m => {
+    batchFilteredVoiceMessages.forEach(m => {
       const d = new Date(m.createTime * 1000).toISOString().slice(0, 10)
       map.set(d, (map.get(d) || 0) + 1)
     })
     return map
-  }, [batchVoiceMessages])
+  }, [batchFilteredVoiceMessages])
 
   // 批量转写：选中日期对应的语音条数
   const batchSelectedMessageCount = useMemo(() => {
-    if (!batchVoiceMessages) return 0
-    return batchVoiceMessages.filter(m =>
+    return batchFilteredVoiceMessages.filter(m =>
       batchSelectedDates.has(new Date(m.createTime * 1000).toISOString().slice(0, 10))
     ).length
-  }, [batchVoiceMessages, batchSelectedDates])
+  }, [batchFilteredVoiceMessages, batchSelectedDates])
 
   const batchVoiceTaskTitle = batchVoiceTaskType === 'decrypt' ? '批量解密语音' : '批量语音转文字'
   const batchVoiceTaskVerb = batchVoiceTaskType === 'decrypt' ? '解密' : '转写'
   const batchVoiceTaskMinutes = Math.ceil(
     batchSelectedMessageCount * (batchVoiceTaskType === 'decrypt' ? 0.6 : 2) / 60
   )
+  const batchVoicePendingLabel = batchVoiceTaskType === 'decrypt' ? '待解密' : '待转文字'
+  const batchVoiceCompletedLabel = batchVoiceTaskType === 'decrypt' ? '已解密' : '已完成'
+  const batchVoiceCurrentFilterLabel = batchVoiceStatusFilter === 'pending'
+    ? batchVoicePendingLabel
+    : batchVoiceStatusFilter === 'completed' ? batchVoiceCompletedLabel : '全部'
+
+  const changeBatchVoiceTaskType = useCallback((taskType: BatchVoiceTaskType) => {
+    setBatchVoiceTaskType(taskType)
+    setBatchVoiceStatusFilter('pending')
+    const pending = (batchVoiceMessages || []).filter(
+      message => !isBatchVoiceMessageCompleted(message, taskType)
+    )
+    setBatchSelectedDates(new Set(getBatchVoiceDates(pending)))
+  }, [batchVoiceMessages])
+
+  const changeBatchVoiceStatusFilter = useCallback((statusFilter: BatchVoiceStatusFilter) => {
+    setBatchVoiceStatusFilter(statusFilter)
+    const visibleMessages = (batchVoiceMessages || []).filter(message => {
+      if (statusFilter === 'all') return true
+      const completed = isBatchVoiceMessageCompleted(message, batchVoiceTaskType)
+      return statusFilter === 'completed' ? completed : !completed
+    })
+    setBatchSelectedDates(new Set(getBatchVoiceDates(visibleMessages)))
+  }, [batchVoiceMessages, batchVoiceTaskType])
 
   const toggleBatchDate = useCallback((date: string) => {
     setBatchSelectedDates(prev => {
@@ -7080,7 +7184,7 @@ function ChatPage(props: ChatPageProps) {
       return next
     })
   }, [])
-  const selectAllBatchDates = useCallback(() => setBatchSelectedDates(new Set(batchVoiceDates)), [batchVoiceDates])
+  const selectAllBatchDates = useCallback(() => setBatchSelectedDates(new Set(batchVisibleVoiceDates)), [batchVisibleVoiceDates])
   const clearAllBatchDates = useCallback(() => setBatchSelectedDates(new Set()), [])
 
   const confirmBatchDecrypt = useCallback(async () => {
@@ -7149,9 +7253,20 @@ function ChatPage(props: ChatPageProps) {
       }
     }
 
+    const imageTaskItemId = (image: typeof images[0]) => (
+      `image-${String(image.imageMd5 || image.imageDatName || image.createTime || '')}`
+    )
     startDecrypt(totalImages, displayNameOrFallback(session.username, session.displayName), 'chat', {
       cancelable: true,
       resumable: true,
+      items: images.map((image, index) => {
+        const identifier = String(image.imageDatName || image.imageMd5 || '').trim()
+        return {
+          id: imageTaskItemId(image) || `image-${index}`,
+          name: identifier || `${image.createTime ? new Date(image.createTime * 1000).toLocaleString('zh-CN') : '未知时间'} 的图片`,
+          target: image.imageMd5 && image.imageDatName ? `MD5 ${image.imageMd5}` : undefined
+        }
+      }),
       onPause: () => {
         controlState.pauseRequested = true
         updateDecryptTaskStatus(
@@ -7175,6 +7290,7 @@ function ChatPage(props: ChatPageProps) {
         )
       }
     })
+    const imageBackgroundTaskId = useBatchImageDecryptStore.getState().taskId
     updateDecryptTaskStatus('正在准备批量图片解密任务...', `0 / ${totalImages}`, 'running')
 
     const hardlinkMd5Set = new Set<string>()
@@ -7216,6 +7332,15 @@ function ChatPage(props: ChatPageProps) {
 
     const decryptOne = async (img: typeof images[0]) => {
       if (controlState.cancelRequested) return
+      const itemId = imageTaskItemId(img)
+      if (imageBackgroundTaskId) {
+        updateBackgroundTaskItem(imageBackgroundTaskId, itemId, {
+          status: 'processing',
+          detail: '正在定位并解密图片',
+          error: undefined,
+          startedAt: Date.now()
+        })
+      }
       try {
         const r = await window.electronAPI.image.decrypt({
           sessionId: session.username,
@@ -7228,15 +7353,41 @@ function ChatPage(props: ChatPageProps) {
           disableUpdateCheck: true,
           suppressEvents: true
         })
-        if (r?.success) successCount++
+        if (r?.success) {
+          successCount++
+          if (imageBackgroundTaskId) {
+            updateBackgroundTaskItem(imageBackgroundTaskId, itemId, {
+              status: 'completed',
+              detail: r.localPath ? `解密完成：${r.localPath}` : '解密完成',
+              error: undefined,
+              finishedAt: Date.now()
+            })
+          }
+        }
         else {
           failCount++
           if (r?.failureKind === 'decrypt_failed') decryptFailedCount++
           else notFoundCount++
+          if (imageBackgroundTaskId) {
+            updateBackgroundTaskItem(imageBackgroundTaskId, itemId, {
+              status: 'failed',
+              detail: r?.failureKind === 'decrypt_failed' ? '图片解密失败' : '未找到原始图片',
+              error: r?.error || (r?.failureKind === 'decrypt_failed' ? '解密器未能生成可用图片' : '可能尚未在微信中加载该图片'),
+              finishedAt: Date.now()
+            })
+          }
         }
-      } catch {
+      } catch (error) {
         failCount++
         notFoundCount++
+        if (imageBackgroundTaskId) {
+          updateBackgroundTaskItem(imageBackgroundTaskId, itemId, {
+            status: 'failed',
+            detail: '图片处理异常',
+            error: error instanceof Error ? error.message : String(error),
+            finishedAt: Date.now()
+          })
+        }
       }
       completed++
       updateDecryptProgress(completed, totalImages)
@@ -7272,7 +7423,7 @@ function ChatPage(props: ChatPageProps) {
     }
 
     finishDecrypt(successCount, failCount, {
-      status: decryptFailedCount > 0 ? 'failed' : 'completed',
+      status: failCount > 0 ? 'failed' : 'completed',
       detail: `图片批量解密完成：成功 ${successCount}，未找到 ${notFoundCount}，解密失败 ${decryptFailedCount}`,
       progressText: `成功 ${successCount} / 未找到 ${notFoundCount} / 解密失败 ${decryptFailedCount}`
     })
@@ -8995,31 +9146,55 @@ function ChatPage(props: ChatPageProps) {
               <h3>{batchVoiceTaskTitle}</h3>
             </div>
             <div className="batch-modal-body">
-              <p>先选择任务类型，再选择日期（仅显示有语音的日期），然后开始处理。</p>
+              <p>默认只选中尚未完成的语音，也可切换筛选查看已完成项。</p>
               <div className="batch-task-switch" role="tablist" aria-label="语音批量任务类型">
                 <button
                   type="button"
                   className={`batch-task-btn${batchVoiceTaskType === 'decrypt' ? ' active' : ''}`}
-                  onClick={() => setBatchVoiceTaskType('decrypt')}
+                  onClick={() => changeBatchVoiceTaskType('decrypt')}
                 >
                   批量解密语音
                 </button>
                 <button
                   type="button"
                   className={`batch-task-btn${batchVoiceTaskType === 'transcribe' ? ' active' : ''}`}
-                  onClick={() => setBatchVoiceTaskType('transcribe')}
+                  onClick={() => changeBatchVoiceTaskType('transcribe')}
                 >
                   批量转文字
                 </button>
               </div>
-              {batchVoiceDates.length > 0 && (
+              <div className="batch-status-filter" role="tablist" aria-label="语音处理状态">
+                <button
+                  type="button"
+                  className={`batch-status-btn${batchVoiceStatusFilter === 'pending' ? ' active' : ''}`}
+                  onClick={() => changeBatchVoiceStatusFilter('pending')}
+                >
+                  {batchVoicePendingLabel}<span>{batchVoiceStatusCounts.pending}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`batch-status-btn${batchVoiceStatusFilter === 'completed' ? ' active' : ''}`}
+                  onClick={() => changeBatchVoiceStatusFilter('completed')}
+                >
+                  {batchVoiceCompletedLabel}<span>{batchVoiceStatusCounts.completed}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`batch-status-btn${batchVoiceStatusFilter === 'all' ? ' active' : ''}`}
+                  onClick={() => changeBatchVoiceStatusFilter('all')}
+                >
+                  全部<span>{batchVoiceStatusCounts.all}</span>
+                </button>
+              </div>
+              {batchVisibleVoiceDates.length > 0 ? (
                 <div className="batch-dates-list-wrap">
                   <div className="batch-dates-actions">
-                    <button type="button" className="batch-dates-btn" onClick={selectAllBatchDates}>全选</button>
+                    <span className="batch-dates-result-label">{batchVoiceCurrentFilterLabel}，按日期选择</span>
+                    <button type="button" className="batch-dates-btn" onClick={selectAllBatchDates}>选择当前结果</button>
                     <button type="button" className="batch-dates-btn" onClick={clearAllBatchDates}>取消全选</button>
                   </div>
                   <ul className="batch-dates-list">
-                    {batchVoiceDates.map(dateStr => {
+                    {batchVisibleVoiceDates.map(dateStr => {
                       const count = batchCountByDate.get(dateStr) ?? 0
                       const checked = batchSelectedDates.has(dateStr)
                       return (
@@ -9038,11 +9213,16 @@ function ChatPage(props: ChatPageProps) {
                     })}
                   </ul>
                 </div>
+              ) : (
+                <div className="batch-status-empty">
+                  <CheckCircle size={18} />
+                  <span>{batchVoiceStatusFilter === 'pending' ? `没有${batchVoicePendingLabel}的语音` : '当前筛选下没有语音'}</span>
+                </div>
               )}
               <div className="batch-info">
                 <div className="info-item">
                   <span className="label">已选:</span>
-                  <span className="value">{batchSelectedDates.size} 天有语音，共 {batchSelectedMessageCount} 条语音</span>
+                  <span className="value">{batchSelectedDates.size} 天，共 {batchSelectedMessageCount} 条{batchVoiceCurrentFilterLabel}语音</span>
                 </div>
                 <div className="info-item">
                   <span className="label">预计耗时:</span>
@@ -9053,8 +9233,8 @@ function ChatPage(props: ChatPageProps) {
                 <AlertCircle size={16} />
                 <span>
                   {batchVoiceTaskType === 'decrypt'
-                    ? '批量解密会预先缓存语音数据，之后播放和转写会更快。解密过程中可以继续使用其他功能，进度会写入导出页任务中心。'
-                    : '批量转写可能需要较长时间，转写过程中可以继续使用其他功能。已转写过的语音会自动跳过，进度会写入导出页任务中心。'}
+                    ? '待解密是指本地还没有 WAV 缓存的语音。解密后播放和转写会更快，详细进度会写入左侧任务中心。'
+                    : '待转文字是指本地还没有转写缓存的语音。转写过程中可以继续使用其他功能，详细进度会写入左侧任务中心。'}
                 </span>
               </div>
             </div>
@@ -9062,7 +9242,11 @@ function ChatPage(props: ChatPageProps) {
               <button className="btn-secondary" onClick={() => setShowBatchConfirm(false)}>
                 取消
               </button>
-              <button className="btn-primary batch-transcribe-start-btn" onClick={confirmBatchTranscribe}>
+              <button
+                className="btn-primary batch-transcribe-start-btn"
+                onClick={confirmBatchTranscribe}
+                disabled={batchSelectedMessageCount === 0}
+              >
                 <Mic size={16} />
                 开始{batchVoiceTaskVerb}
               </button>
@@ -9149,7 +9333,7 @@ function ChatPage(props: ChatPageProps) {
               </div>
               <div className="batch-warning">
                 <AlertCircle size={16} />
-                <span>批量解密可能需要较长时间，进度会自动写入导出页任务中心（含准备阶段状态）。</span>
+                <span>批量解密可能需要较长时间，每张图片的进度和失败原因都会写入左侧任务中心。</span>
               </div>
             </div>
             <div className="batch-modal-footer">

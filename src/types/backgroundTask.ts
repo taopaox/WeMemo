@@ -16,6 +16,28 @@ export type BackgroundTaskStatus =
   | 'failed'
   | 'canceled'
 
+export type BackgroundTaskItemStatus =
+  | 'pending'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'skipped'
+
+export interface BackgroundTaskItem {
+  id: string
+  name: string
+  target?: string
+  detail?: string
+  error?: string
+  status: BackgroundTaskItemStatus
+  startedAt?: number
+  finishedAt?: number
+}
+
+export type BackgroundTaskItemInput = Omit<BackgroundTaskItem, 'status'> & {
+  status?: BackgroundTaskItemStatus
+}
+
 export interface BackgroundTaskRecord {
   id: string
   sourcePage: BackgroundTaskSourcePage
@@ -30,6 +52,7 @@ export interface BackgroundTaskRecord {
   startedAt: number
   updatedAt: number
   finishedAt?: number
+  items?: BackgroundTaskItem[]
 }
 
 export interface BackgroundTaskInput {
@@ -39,6 +62,7 @@ export interface BackgroundTaskInput {
   progressText?: string
   cancelable?: boolean
   resumable?: boolean
+  items?: BackgroundTaskItemInput[]
   onCancel?: () => void | Promise<void>
   onPause?: () => void | Promise<void>
   onResume?: () => void | Promise<void>
@@ -51,3 +75,5 @@ export interface BackgroundTaskUpdate {
   status?: BackgroundTaskStatus
   cancelable?: boolean
 }
+
+export type BackgroundTaskItemUpdate = Partial<Omit<BackgroundTaskItem, 'id'>>

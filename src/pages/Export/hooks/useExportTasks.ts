@@ -15,6 +15,15 @@ import { emitExportSessionStatus, onExportSessionStatusRequest } from '../../../
 import { useAutomationStore } from './useAutomation'
 import type { ExportProgress } from '../types'
 import type { ExportAutomationTask } from '../../../types/exportAutomation'
+import {
+  finishBackgroundTask,
+  getBackgroundTaskSnapshot,
+  registerBackgroundTask,
+  requestCancelBackgroundTask,
+  setBackgroundTaskItems,
+  updateBackgroundTask,
+  updateBackgroundTaskItem
+} from '../../../services/backgroundTaskMonitor'
 
 export interface ExportTasksResult {
   tasks: ExportTask[]
@@ -39,6 +48,7 @@ export function useExportTasks(): ExportTasksResult {
   const [tasks, setTasks] = useState<ExportTask[]>([])
   
   const tasksRef = useRef<ExportTask[]>([])
+  const backgroundTaskIdsRef = useRef<Map<string, string>>(new Map())
   tasksRef.current = tasks
 
   const { setSessionStatus } = useExportTaskStore()
@@ -92,6 +102,24 @@ export function useExportTasks(): ExportTasksResult {
 
     setTasks(prev => [newTask, ...prev])
 
+    const backgroundTaskId = registerBackgroundTask({
+      sourcePage: 'export',
+      title,
+      detail: '正在准备导出任务...',
+      progressText: `0 / ${payload.sessionIds.length}`,
+      cancelable: true,
+      resumable: false,
+      items: payload.sessionIds.map((sessionId, index) => ({
+        id: sessionId,
+        name: payload.sessionNames[index] || sessionId,
+        target: sessionId
+      })),
+      onCancel: async () => {
+        await window.electronAPI.export.cancelTask(taskId)
+      }
+    })
+    backgroundTaskIdsRef.current.set(taskId, backgroundTaskId)
+
     if (payload.source === 'automation') {
       updateAutomationRunState(payload.automationTaskId, (prev) => ({
         ...prev,
@@ -119,6 +147,28 @@ export function useExportTasks(): ExportTasksResult {
           const sig = buildProgressPayloadSignature(progressPayload)
           if (sig === lastProgressSig) return
           lastProgressSig = sig
+
+          const mirroredTaskId = backgroundTaskIdsRef.current.get(taskId)
+          if (mirroredTaskId) {
+            const phaseLabel = progressPayload.phaseLabel || progressPayload.phase || '正在导出'
+            updateBackgroundTask(mirroredTaskId, {
+              detail: progressPayload.currentSession
+                ? `${progressPayload.currentSession}：${phaseLabel}`
+                : phaseLabel,
+              progressText: `${Math.max(0, Number(progressPayload.current) || 0)} / ${Math.max(0, Number(progressPayload.total) || payload.sessionIds.length)}`
+            })
+            const currentSessionId = String(progressPayload.currentSessionId || '').trim()
+            if (currentSessionId) {
+              updateBackgroundTaskItem(mirroredTaskId, currentSessionId, {
+                status: progressPayload.phase === 'complete' ? 'completed' : 'processing',
+                detail: phaseLabel,
+                startedAt: getBackgroundTaskSnapshot()
+                  .find(task => task.id === mirroredTaskId)?.items
+                  ?.find(item => item.id === currentSessionId)?.startedAt || Date.now(),
+                finishedAt: progressPayload.phase === 'complete' ? Date.now() : undefined
+              })
+            }
+          }
 
           updateTask(taskId, (task) => {
             if (task.status !== 'running') return task
@@ -154,6 +204,49 @@ export function useExportTasks(): ExportTasksResult {
           { taskId }
         )
 
+        const mirroredTaskId = backgroundTaskIdsRef.current.get(taskId)
+        if (mirroredTaskId) {
+          const successIds = new Set(result?.successSessionIds || [])
+          const failedIds = new Set(result?.failedSessionIds || [])
+          const pendingIds = new Set(result?.pendingSessionIds || [])
+          const mirroredTask = getBackgroundTaskSnapshot().find(task => task.id === mirroredTaskId)
+          const finishedAt = Date.now()
+          setBackgroundTaskItems(mirroredTaskId, (mirroredTask?.items || []).map(item => {
+            if (failedIds.has(item.id)) {
+              return {
+                ...item,
+                status: 'failed',
+                detail: '导出失败',
+                error: result?.failedSessionErrors?.[item.id] || result?.error || '导出失败',
+                finishedAt
+              }
+            }
+            if (successIds.has(item.id)) {
+              const outputPath = result?.sessionOutputPaths?.[item.id]
+              return {
+                ...item,
+                status: 'completed',
+                detail: outputPath ? `已导出到 ${outputPath}` : '导出完成',
+                error: undefined,
+                finishedAt
+              }
+            }
+            if (pendingIds.has(item.id) || result?.stopped || result?.paused) {
+              return { ...item, status: 'pending', detail: '未处理' }
+            }
+            return item
+          }))
+          const failedCount = Math.max(0, Number(result?.failCount) || failedIds.size)
+          const successCount = Math.max(0, Number(result?.successCount) || successIds.size)
+          const finalStatus = result?.stopped ? 'canceled' : (failedCount > 0 || !result?.success ? 'failed' : 'completed')
+          finishBackgroundTask(mirroredTaskId, finalStatus, {
+            detail: result?.stopped
+              ? `导出已停止：成功 ${successCount}，失败 ${failedCount}`
+              : `导出完成：成功 ${successCount}，失败 ${failedCount}`,
+            progressText: `成功 ${successCount} / 失败 ${failedCount}`
+          })
+        }
+
         updateTask(taskId, (task) => ({
           ...task,
           status: result?.success ? 'success' : 'error',
@@ -184,6 +277,20 @@ export function useExportTasks(): ExportTasksResult {
       } catch (err: any) {
         console.error('[useExportTasks] Task failed:', err)
         const errorMessage = err.message || '未知错误'
+        const mirroredTaskId = backgroundTaskIdsRef.current.get(taskId)
+        if (mirroredTaskId) {
+          const mirroredTask = getBackgroundTaskSnapshot().find(task => task.id === mirroredTaskId)
+          const finishedAt = Date.now()
+          setBackgroundTaskItems(mirroredTaskId, (mirroredTask?.items || []).map(item => (
+            item.status === 'completed'
+              ? item
+              : { ...item, status: 'failed', detail: '导出任务异常', error: errorMessage, finishedAt }
+          )))
+          finishBackgroundTask(mirroredTaskId, 'failed', {
+            detail: `导出失败：${errorMessage}`,
+            progressText: '任务异常结束'
+          })
+        }
         updateTask(taskId, (task) => ({
           ...task,
           status: 'error',
@@ -207,6 +314,7 @@ export function useExportTasks(): ExportTasksResult {
         if (progressUnsubscribe) {
           progressUnsubscribe()
         }
+        backgroundTaskIdsRef.current.delete(taskId)
       }
     }
 
@@ -216,7 +324,9 @@ export function useExportTasks(): ExportTasksResult {
   const cancelTask = useCallback((taskId: string) => {
     updateTask(taskId, (task) => {
       if (task.status === 'running') {
-        window.electronAPI.export.cancelTask(taskId)
+        const backgroundTaskId = backgroundTaskIdsRef.current.get(taskId)
+        if (backgroundTaskId) requestCancelBackgroundTask(backgroundTaskId)
+        else window.electronAPI.export.cancelTask(taskId)
         return { ...task, status: 'cancel_requested' }
       }
       return task

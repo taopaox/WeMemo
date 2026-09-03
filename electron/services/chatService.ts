@@ -9839,9 +9839,9 @@ class ChatService {
 
       // 检查转写缓存
       const cached = this.voiceTranscriptCache.get(cacheKey)
-      if (cached) {
+      if (this.voiceTranscriptCache.has(cacheKey)) {
 
-        return { success: true, transcript: cached }
+        return { success: true, transcript: cached || '' }
       }
 
       // 检查是否正在转写
@@ -9901,9 +9901,8 @@ class ChatService {
 
           if (result.success) {
             const transcript = String(result.transcript || '').trim()
-            if (transcript) {
-              this.cacheVoiceTranscript(cacheKey, transcript)
-            }
+            // 即使未识别到文字，也记录为已完成，避免批量任务重复转写静音。
+            this.cacheVoiceTranscript(cacheKey, transcript)
             return { success: true, transcript }
           } else {
             console.error(`[Transcribe] 转写失败: ${result.error}`)
@@ -10041,7 +10040,11 @@ class ChatService {
   /**
    * 获取某会话的所有语音消息（localType=34），用于批量转写
    */
-  async getAllVoiceMessages(sessionId: string): Promise<{ success: boolean; messages?: Message[]; error?: string }> {
+  async getAllVoiceMessages(sessionId: string): Promise<{
+    success: boolean
+    messages?: Array<Message & { hasDecryptedVoiceCache: boolean; hasVoiceTranscriptCache: boolean }>
+    error?: string
+  }> {
     try {
       const connectResult = await this.ensureConnected()
       if (!connectResult.success) {
@@ -10067,8 +10070,24 @@ class ChatService {
         return true
       })
 
+      // 批量操作弹窗需要区分待处理和已完成。这里只读本地缓存状态，
+      // 不会为了统计而触发语音解码或转写。
+      this.loadTranscriptCacheIfNeeded()
+      const voiceCacheDir = this.getVoiceCacheDir()
+      const messagesWithCacheStatus = allVoiceMessages.map(message => {
+        const cacheKey = this.getVoiceCacheKey(sessionId, String(message.localId), message.createTime)
+        const hasDecryptedVoiceCache = Boolean(this.voiceWavCache.get(cacheKey))
+          || existsSync(join(voiceCacheDir, `${cacheKey}.wav`))
+        const hasVoiceTranscriptCache = this.voiceTranscriptCache.has(cacheKey)
+        return {
+          ...message,
+          hasDecryptedVoiceCache,
+          hasVoiceTranscriptCache
+        }
+      })
+
       console.log(`[ChatService] 共找到 ${allVoiceMessages.length} 条语音消息（去重后）`)
-      return { success: true, messages: allVoiceMessages }
+      return { success: true, messages: messagesWithCacheStatus }
     } catch (e) {
       console.error('[ChatService] 获取所有语音消息失败:', e)
       return { success: false, error: String(e) }

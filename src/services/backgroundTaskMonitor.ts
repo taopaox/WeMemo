@@ -1,5 +1,7 @@
 import type {
   BackgroundTaskInput,
+  BackgroundTaskItem,
+  BackgroundTaskItemUpdate,
   BackgroundTaskRecord,
   BackgroundTaskStatus,
   BackgroundTaskUpdate
@@ -11,6 +13,7 @@ const tasks = new Map<string, BackgroundTaskRecord>()
 const cancelHandlers = new Map<string, () => void | Promise<void>>()
 const pauseHandlers = new Map<string, () => void | Promise<void>>()
 const resumeHandlers = new Map<string, () => void | Promise<void>>()
+const taskItemIndexes = new Map<string, Map<string, number>>()
 const listeners = new Set<BackgroundTaskListener>()
 let taskSequence = 0
 
@@ -39,6 +42,7 @@ const pruneSettledTasks = () => {
     cancelHandlers.delete(staleTask.id)
     pauseHandlers.delete(staleTask.id)
     resumeHandlers.delete(staleTask.id)
+    taskItemIndexes.delete(staleTask.id)
   }
 }
 
@@ -62,6 +66,10 @@ export const subscribeBackgroundTasks = (listener: BackgroundTaskListener): (() 
 export const registerBackgroundTask = (input: BackgroundTaskInput): string => {
   const now = Date.now()
   const taskId = buildTaskId()
+  const items = input.items?.map(item => ({
+    ...item,
+    status: item.status || 'pending'
+  }))
   tasks.set(taskId, {
     id: taskId,
     sourcePage: input.sourcePage,
@@ -74,8 +82,12 @@ export const registerBackgroundTask = (input: BackgroundTaskInput): string => {
     pauseRequested: false,
     status: 'running',
     startedAt: now,
-    updatedAt: now
+    updatedAt: now,
+    items
   })
+  if (items) {
+    taskItemIndexes.set(taskId, new Map(items.map((item, index) => [item.id, index])))
+  }
   if (input.onCancel) {
     cancelHandlers.set(taskId, input.onCancel)
   }
@@ -88,6 +100,37 @@ export const registerBackgroundTask = (input: BackgroundTaskInput): string => {
   pruneSettledTasks()
   notifyListeners()
   return taskId
+}
+
+export const setBackgroundTaskItems = (taskId: string, items: BackgroundTaskItem[]): void => {
+  const existing = tasks.get(taskId)
+  if (!existing) return
+  const nextItems = items.map(item => ({ ...item }))
+  tasks.set(taskId, {
+    ...existing,
+    items: nextItems,
+    updatedAt: Date.now()
+  })
+  taskItemIndexes.set(taskId, new Map(nextItems.map((item, index) => [item.id, index])))
+  notifyListeners()
+}
+
+export const updateBackgroundTaskItem = (
+  taskId: string,
+  itemId: string,
+  patch: BackgroundTaskItemUpdate
+): void => {
+  const existing = tasks.get(taskId)
+  if (!existing?.items) return
+  const itemIndex = taskItemIndexes.get(taskId)?.get(itemId)
+  if (itemIndex === undefined || !existing.items[itemIndex]) return
+  // 明细可能有数万条；用索引定位并只替换单项，避免每次进度都扫描整个数组。
+  existing.items[itemIndex] = { ...existing.items[itemIndex], ...patch }
+  tasks.set(taskId, {
+    ...existing,
+    updatedAt: Date.now()
+  })
+  notifyListeners()
 }
 
 export const updateBackgroundTask = (taskId: string, patch: BackgroundTaskUpdate): void => {
@@ -117,6 +160,27 @@ export const finishBackgroundTask = (
   const existing = tasks.get(taskId)
   if (!existing) return
   const now = Date.now()
+  const finalizedItems = existing.items?.map(item => {
+    if (item.status !== 'pending' && item.status !== 'processing') return item
+    if (status === 'canceled') {
+      return {
+        ...item,
+        status: 'skipped' as const,
+        detail: item.status === 'processing' ? '任务停止，处理未完成' : '任务停止，未处理',
+        finishedAt: now
+      }
+    }
+    if (status === 'failed') {
+      return {
+        ...item,
+        status: 'failed' as const,
+        detail: item.status === 'processing' ? '任务异常中断' : '任务未能处理该项',
+        error: item.error || patch?.detail || '任务异常结束',
+        finishedAt: now
+      }
+    }
+    return item
+  })
   tasks.set(taskId, {
     ...existing,
     ...patch,
@@ -124,7 +188,8 @@ export const finishBackgroundTask = (
     updatedAt: now,
     finishedAt: now,
     cancelRequested: status === 'canceled' ? true : existing.cancelRequested,
-    pauseRequested: false
+    pauseRequested: false,
+    items: finalizedItems
   })
   cancelHandlers.delete(taskId)
   pauseHandlers.delete(taskId)
@@ -213,6 +278,7 @@ export const clearSettledBackgroundTasks = (predicate?: (task: BackgroundTaskRec
     cancelHandlers.delete(task.id)
     pauseHandlers.delete(task.id)
     resumeHandlers.delete(task.id)
+    taskItemIndexes.delete(task.id)
     clearedCount += 1
   }
 

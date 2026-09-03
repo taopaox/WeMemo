@@ -13,11 +13,11 @@ interface TaskCenterProps {
   onCancelExportTask: (taskId: string) => void
   onClearCompletedExportTasks: () => void
   
-  backgroundTasks: BackgroundTaskRecord[]
-  onPauseBackgroundTask: (taskId: string) => void
-  onResumeBackgroundTask: (taskId: string) => void
-  onCancelBackgroundTask: (taskId: string) => void
-  onClearCompletedBackgroundTasks: () => void
+  backgroundTasks?: BackgroundTaskRecord[]
+  onPauseBackgroundTask?: (taskId: string) => void
+  onResumeBackgroundTask?: (taskId: string) => void
+  onCancelBackgroundTask?: (taskId: string) => void
+  onClearCompletedBackgroundTasks?: () => void
 }
 
 const isBackgroundTaskSettled = (task: BackgroundTaskRecord): boolean => (
@@ -42,11 +42,11 @@ const TaskCenter: React.FC<TaskCenterProps> = ({
   exportTasks,
   onCancelExportTask,
   onClearCompletedExportTasks,
-  backgroundTasks,
-  onPauseBackgroundTask,
-  onResumeBackgroundTask,
-  onCancelBackgroundTask,
-  onClearCompletedBackgroundTasks
+  backgroundTasks = [],
+  onPauseBackgroundTask = () => {},
+  onResumeBackgroundTask = () => {},
+  onCancelBackgroundTask = () => {},
+  onClearCompletedBackgroundTasks = () => {}
 }) => {
   const hasTasks = exportTasks.length > 0 || backgroundTasks.length > 0
   

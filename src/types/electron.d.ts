@@ -811,7 +811,11 @@ export interface ElectronAPI {
     }>
     getImageData: (sessionId: string, msgId: string) => Promise<{ success: boolean; data?: string; error?: string }>
     getVoiceData: (sessionId: string, msgId: string, createTime?: number, serverId?: string | number) => Promise<{ success: boolean; data?: string; error?: string }>
-    getAllVoiceMessages: (sessionId: string) => Promise<{ success: boolean; messages?: Message[]; error?: string }>
+    getAllVoiceMessages: (sessionId: string) => Promise<{
+      success: boolean
+      messages?: Array<Message & { hasDecryptedVoiceCache: boolean; hasVoiceTranscriptCache: boolean }>
+      error?: string
+    }>
     getAllImageMessages: (sessionId: string) => Promise<{
       success: boolean
       images?: { imageMd5?: string; imageDatName?: string; createTime?: number }[]
