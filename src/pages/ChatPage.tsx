@@ -6316,30 +6316,40 @@ function ChatPage(props: ChatPageProps) {
   const isSessionListSyncing = (isLoadingSessions || isRefreshingSessions) && hasSessionRecords
 
 
-  // 格式化会话时间（相对时间）- 使用 useMemo 缓存，避免每次渲染都计算
+  // 会话列表时间：当天时分 / 昨天+时分 / 本周周几 / 否则月日
   const formatSessionTime = useCallback((timestamp: number): string => {
     if (!Number.isFinite(timestamp) || timestamp <= 0) return ''
 
-    const now = Date.now()
-    const msgTime = timestamp * 1000
-    const diff = now - msgTime
+    const date = new Date(timestamp * 1000)
+    if (!Number.isFinite(date.getTime())) return ''
 
-    const minutes = Math.floor(diff / 60000)
-    const hours = Math.floor(diff / 3600000)
+    const now = new Date()
+    const pad2 = (n: number) => String(n).padStart(2, '0')
+    const hm = `${pad2(date.getHours())}:${pad2(date.getMinutes())}`
 
-    if (minutes < 1) return '刚刚'
-    if (minutes < 60) return `${minutes}分钟前`
-    if (hours < 24) return `${hours}小时前`
-
-    // 超过24小时显示日期
-    const date = new Date(msgTime)
-    const nowDate = new Date()
-
-    if (date.getFullYear() === nowDate.getFullYear()) {
-      return `${date.getMonth() + 1}/${date.getDate()}`
+    const startOfDay = (value: Date) => {
+      const next = new Date(value)
+      next.setHours(0, 0, 0, 0)
+      return next
     }
 
-    return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
+    const todayStart = startOfDay(now)
+    const dateStart = startOfDay(date)
+    const dayDiff = Math.round((todayStart.getTime() - dateStart.getTime()) / 86400000)
+
+    if (dayDiff === 0) return hm
+    if (dayDiff === 1) return `昨天 ${hm}`
+
+    const weekdayOffset = (todayStart.getDay() + 6) % 7 // 周一为一周起始
+    if (dayDiff > 1 && dayDiff <= weekdayOffset) {
+      return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getDay()]
+    }
+
+    if (date.getFullYear() === now.getFullYear()) {
+      return `${date.getMonth() + 1}月${date.getDate()}日`
+    }
+
+    return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
   }, [])
 
   // 获取当前会话信息（从通讯录跳转时可能不在 sessions 列表中，构造 fallback）
