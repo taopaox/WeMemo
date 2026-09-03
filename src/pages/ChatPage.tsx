@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Search, MessageSquare, AlertCircle, Loader2, RefreshCw, X, ChevronDown, ChevronLeft, Info, Calendar, Database, Hash, Play, Pause, Image as ImageIcon, Mic, CheckCircle, Copy, Check, CheckSquare, Download, BarChart3, Edit2, Trash2, BellOff, Users, FolderClosed, UserCheck, Crown, Aperture, Newspaper, Star, Sparkles, Code2 } from 'lucide-react'
+import { Search, MessageSquare, AlertCircle, Loader2, RefreshCw, X, ChevronDown, ChevronLeft, Info, Calendar, Database, Hash, Play, Image as ImageIcon, Mic, CheckCircle, Copy, Check, CheckSquare, Download, BarChart3, Edit2, Trash2, BellOff, Users, FolderClosed, UserCheck, Crown, Aperture, Newspaper, Star, Sparkles, Code2 } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
@@ -34,6 +34,19 @@ import {
 import ChatHeader from './Chat/ChatHeader'
 import ChatMessageBubble, { type MessageAvatarProfile } from './Chat/ChatMessageBubble'
 import { buildNewMessagesCursor } from './Chat/messageCursor'
+import wechatLogoUrl from '../assets/wechat/wechat-logo.svg'
+import pdfIconUrl from '../assets/wechat/pdf.png'
+import wordIconUrl from '../assets/wechat/word.png'
+import excelIconUrl from '../assets/wechat/excel.png'
+import zipIconUrl from '../assets/wechat/zip.png'
+import redPacketPendingIconUrl from '../assets/wechat/wechat-trans-icon3.png'
+import redPacketReceivedIconUrl from '../assets/wechat/wechat-trans-icon4.png'
+import transferPendingIconUrl from '../assets/wechat/wechat-trans-icon1.png'
+import transferReceivedIconUrl from '../assets/wechat/wechat-trans-icon2.png'
+import transferReturnedIconUrl from '../assets/wechat/wechat-returned.png'
+import transferOverdueIconUrl from '../assets/wechat/overdue.png'
+import audioCallIconUrl from '../assets/wechat/wechat-audio-call.svg'
+import videoCallIconUrl from '../assets/wechat/wechat-video-call.svg'
 import {
   subscribeSharedImageCacheResolved,
   subscribeSharedImageUpdate,
@@ -738,6 +751,43 @@ function formatFileSize(bytes: number): string {
   const sizes = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
+}
+
+function FileTypeIcon({ fileName }: { fileName?: string }) {
+  const extension = String(fileName || '').split('.').pop()?.toLowerCase() || ''
+  const kind = extension === 'pdf'
+    ? 'pdf'
+    : ['zip', 'rar', '7z', 'tar', 'gz', 'bz2'].includes(extension)
+      ? 'zip'
+      : ['doc', 'docx'].includes(extension)
+        ? 'doc'
+        : ['xls', 'xlsx', 'csv'].includes(extension)
+          ? 'xls'
+          : ['ppt', 'pptx'].includes(extension)
+            ? 'ppt'
+            : ['txt', 'md', 'log'].includes(extension)
+              ? 'txt'
+              : 'default'
+  const iconUrl = kind === 'pdf'
+    ? pdfIconUrl
+    : kind === 'doc'
+      ? wordIconUrl
+      : kind === 'xls'
+        ? excelIconUrl
+        : kind === 'zip'
+          ? zipIconUrl
+          : ''
+
+  if (iconUrl) return <img src={iconUrl} alt="" className="wechat-file-icon" />
+
+  const label = kind === 'default' ? '' : kind.toUpperCase()
+  return (
+    <svg viewBox="0 0 24 24" className={`wechat-file-icon wechat-file-icon--${kind}`} aria-hidden="true">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M14 2v6h6" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      {label ? <text x="6" y="17" fontSize="5" fill="currentColor" fontWeight="bold">{label}</text> : null}
+    </svg>
+  )
 }
 
 // 清理消息内容的辅助函数
@@ -11678,17 +11728,6 @@ function MessageBubble({
         }
       }
 
-      const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!voiceDataUrl || !voiceAudioRef.current) return
-        e.stopPropagation()
-        const rect = e.currentTarget.getBoundingClientRect()
-        const x = e.clientX - rect.left
-        const percentage = x / rect.width
-        const newTime = percentage * voiceDuration
-        voiceAudioRef.current.currentTime = newTime
-        setVoiceCurrentTime(newTime)
-      }
-
       const showDecryptHint = !voiceDataUrl && !voiceLoading && !isVoicePlaying
       const showTranscript = Boolean(voiceDataUrl) && (voiceTranscriptLoading || voiceTranscriptError || voiceTranscript !== undefined)
       const transcriptText = (voiceTranscript || '').trim()
@@ -11704,71 +11743,54 @@ function MessageBubble({
       }
 
       const voiceContent = (
-        <div className="voice-stack">
-          <div className={`voice-message ${isVoicePlaying ? 'playing' : ''}`} onClick={handleToggle}>
-            <button
-              className="voice-play-btn"
-              onClick={(e) => {
-                e.stopPropagation()
-                handleToggle()
-              }}
-              aria-label="播放语音"
-              type="button"
-            >
-              {isVoicePlaying ? <Pause size={16} /> : <Play size={16} />}
-            </button>
-            <div className="voice-wave" onClick={handleSeek}>
-              {voiceDataUrl && voiceWaveform.length > 0 ? (
-                <div className="voice-waveform">
-                  {voiceWaveform.map((amplitude, i) => {
-                    const progress = (voiceCurrentTime / (voiceDuration || 1))
-                    const isPlayed = (i / voiceWaveform.length) < progress
-                    return (
-                      <div
-                        key={i}
-                        className={`waveform-bar ${isPlayed ? 'played' : ''}`}
-                        style={{ height: `${Math.max(20, amplitude * 100)}%` }}
-                      />
-                    )
-                  })}
-                </div>
-              ) : (
-                <div className="voice-wave-placeholder">
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                </div>
-              )}
+        <div className={`voice-stack wechat-voice-wrapper ${isSent ? 'wechat-voice-wrapper--sent' : 'wechat-voice-wrapper--received'}`}>
+          <div
+            className={`voice-message wechat-voice-bubble msg-radius ${isSent ? 'wechat-voice-sent' : 'wechat-voice-received'} ${isVoicePlaying ? 'playing' : ''}`}
+            style={{ width: `${Math.min(200, 80 + Math.max(1, message.voiceDurationSeconds || 1) * 4)}px` }}
+            onClick={handleToggle}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return
+              event.preventDefault()
+              void handleToggle()
+            }}
+          >
+            <div className={`wechat-voice-content ${isSent ? 'wechat-voice-content--sent' : ''}`}>
+              <svg
+                className={`wechat-voice-icon ${isSent ? 'voice-icon-sent' : 'voice-icon-received'} ${isVoicePlaying ? 'voice-playing' : ''}`}
+                viewBox="0 0 32 32"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M10.24 11.616l-4.224 4.192 4.224 4.192c1.088-1.056 1.76-2.56 1.76-4.192s-0.672-3.136-1.76-4.192z" />
+                <path className="voice-wave-2" d="M15.199 6.721l-1.791 1.76c1.856 1.888 3.008 4.48 3.008 7.328s-1.152 5.44-3.008 7.328l1.791 1.76c2.336-2.304 3.809-5.536 3.809-9.088s-1.473-6.784-3.809-9.088z" />
+                <path className="voice-wave-3" d="M20.129 1.793l-1.762 1.76c3.104 3.168 5.025 7.488 5.025 12.256s-1.921 9.088-5.025 12.256l1.762 1.76c3.648-3.616 5.887-8.544 5.887-14.016s-2.239-10.432-5.887-14.016z" />
+              </svg>
+              <span className="wechat-voice-duration">{durationText || '1"'}</span>
+              {voiceLoading && <span className="wechat-voice-state">解码中...</span>}
+              {showDecryptHint && <span className="wechat-voice-state">点击解密</span>}
+              {voiceError && <span className="wechat-voice-state error">播放失败</span>}
             </div>
-            <div className="voice-info">
-              <span className="voice-label">语音</span>
-              {durationText && <span className="voice-duration">{durationText}</span>}
-              {voiceLoading && <span className="voice-loading">解码中...</span>}
-              {showDecryptHint && <span className="voice-hint">点击解密</span>}
-              {voiceError && <span className="voice-error">播放失败</span>}
-            </div>
-            {/* 转文字按钮 */}
-            {voiceDataUrl && !voiceTranscript && !voiceTranscriptLoading && (
+          </div>
+          {voiceDataUrl && !voiceTranscript && !voiceTranscriptLoading && (
+            <div className="wechat-voice-transcript wechat-voice-transcript--actions">
               <button
-                className="voice-transcribe-btn"
-                onClick={(e) => {
-                  e.stopPropagation()
+                className="wechat-voice-transcript__action wechat-voice-transcript__action--local"
+                onClick={(event) => {
+                  event.stopPropagation()
                   void requestVoiceTranscript()
                 }}
-                title="转文字"
                 type="button"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
+                <Mic size={15} aria-hidden="true" />
+                <span>本地转文字</span>
               </button>
-            )}
-          </div>
+            </div>
+          )}
           {showTranscript && (
             <div
-              className={`voice-transcript ${isSent ? 'sent' : 'received'}${voiceTranscriptError ? ' error' : ''}`}
+              className={`voice-transcript wechat-voice-transcript ${isSent ? 'wechat-voice-transcript--sent' : 'wechat-voice-transcript--received'}${voiceTranscriptError ? ' wechat-voice-transcript--error error' : ''}`}
               onClick={handleTranscriptRetry}
               title={voiceTranscriptError ? '点击重试语音转写' : undefined}
             >
@@ -11826,13 +11848,18 @@ function MessageBubble({
 
     // 通话消息
     if (isCall) {
+      const isVideoCall = String(message.parsedContent || message.content || '').includes('视频')
       return (
         <div className="bubble-content">
-          <div className="call-message">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-            </svg>
-            <span>{message.parsedContent || '[通话]'}</span>
+          <div className={`call-message wechat-voip-bubble msg-radius ${isSent ? 'wechat-voip-sent' : 'wechat-voip-received'}`}>
+            <div className={`wechat-voip-content ${isSent ? 'wechat-voip-content--sent' : ''}`}>
+              <img
+                src={isVideoCall ? videoCallIconUrl : audioCallIconUrl}
+                className={`wechat-voip-icon ${isVideoCall ? 'wechat-voip-icon--video' : ''} ${isVideoCall && isSent ? 'wechat-voip-icon--mirrored' : ''}`}
+                alt=""
+              />
+              <span className="wechat-voip-text">{message.parsedContent || '[通话]'}</span>
+            </div>
           </div>
         </div>
       )
@@ -12106,19 +12133,16 @@ function MessageBubble({
         const statusText = `${greeting} ${q('receiverdes') || ''} ${q('senderdes') || ''}`
         const isReceived = receiveStatus === '1' || statusText.includes('已领取') || statusText.includes('已被领完')
         return (
-          <div className={`hongbao-message ${isReceived ? 'received' : ''}`}>
-            <div className="hongbao-icon">
-              <svg width="32" height="32" viewBox="0 0 40 40" fill="none">
-                <rect x="4" y="6" width="32" height="28" rx="4" fill="white" fillOpacity="0.3" />
-                <rect x="4" y="6" width="32" height="14" rx="4" fill="white" fillOpacity="0.2" />
-                <circle cx="20" cy="20" r="6" fill="white" fillOpacity="0.4" />
-                <text x="20" y="24" textAnchor="middle" fill="white" fontSize="12" fontWeight="bold">¥</text>
-              </svg>
+          <div className={`hongbao-message wechat-redpacket-card wechat-special-card msg-radius ${isReceived ? 'received wechat-redpacket-received' : ''} ${isSent ? 'wechat-special-sent-side' : ''}`}>
+            <div className="wechat-redpacket-content">
+              <img src={isReceived ? redPacketReceivedIconUrl : redPacketPendingIconUrl} className="wechat-redpacket-icon" alt="" />
+              <div className="hongbao-info wechat-redpacket-info">
+                <span className="hongbao-greeting wechat-redpacket-text">{greeting || '恭喜发财，大吉大利'}</span>
+                {isReceived && <span className="hongbao-status wechat-redpacket-status">已领取</span>}
+              </div>
             </div>
-            <div className="hongbao-info">
-              <div className="hongbao-greeting">{greeting || '恭喜发财，大吉大利'}</div>
-              <div className="hongbao-status">{isReceived ? '已领取' : '领取红包'}</div>
-              <div className="hongbao-label">微信红包</div>
+            <div className="hongbao-label wechat-redpacket-bottom">
+              <span>微信红包</span>
             </div>
           </div>
         )
@@ -12369,7 +12393,7 @@ function MessageBubble({
 
         return (
           <div
-            className="chat-record-message"
+            className={`chat-record-message wechat-chat-history-card wechat-special-card msg-radius ${isSent ? 'wechat-special-sent-side' : ''}`}
             onClick={(e) => {
               e.stopPropagation()
               // 打开聊天记录窗口
@@ -12377,32 +12401,25 @@ function MessageBubble({
             }}
             title="点击查看详细聊天记录"
           >
-            <div className="chat-record-title" title={displayTitle}>
-              {displayTitle}
-            </div>
-            <div className="chat-record-meta-line" title={metaText}>
-              {metaText}
-            </div>
-            {previewItems.length > 0 ? (
-              <div className="chat-record-list">
-                {previewItems.map((item, i) => (
-                  <div key={i} className="chat-record-item">
+            <div className="wechat-chat-history-body">
+              <div className="chat-record-title wechat-chat-history-title" title={displayTitle}>
+                {displayTitle}
+              </div>
+              <div className="chat-record-list wechat-chat-history-preview">
+                {previewItems.length > 0 ? previewItems.map((item, i) => (
+                  <div key={i} className="chat-record-item wechat-chat-history-line">
                     <span className="source-name">
                       {hasRenderableChatRecordName(item.sourcename) ? `${item.sourcename}: ` : ''}
                     </span>
                     {getChatRecordPreviewText(item)}
                   </div>
-                ))}
-                {remainingCount > 0 && (
-                  <div className="chat-record-more">还有 {remainingCount} 条…</div>
+                )) : (
+                  <div className="chat-record-item wechat-chat-history-line">{desc || metaText}</div>
                 )}
+                {remainingCount > 0 && <div className="chat-record-more wechat-chat-history-line">还有 {remainingCount} 条…</div>}
               </div>
-            ) : (
-              <div className="chat-record-desc">
-                {desc || '点击打开查看完整聊天记录'}
-              </div>
-            )}
-            <div className="chat-record-footer">聊天记录</div>
+            </div>
+            <div className="chat-record-footer wechat-chat-history-bottom"><span>聊天记录</span></div>
           </div>
         )
       }
@@ -12411,38 +12428,21 @@ function MessageBubble({
       if (appMsgType === '6') {
         const fileName = message.fileName || title || '文件'
         const fileSize = message.fileSize
-        const fileExt = message.fileExt || fileName.split('.').pop()?.toLowerCase() || ''
-
-        // 根据扩展名选择图标
-        const getFileIcon = () => {
-          const archiveExts = ['zip', 'rar', '7z', 'tar', 'gz', 'bz2']
-          if (archiveExts.includes(fileExt)) {
-            return (
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-            )
-          }
-          return (
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
-              <polyline points="13 2 13 9 20 9" />
-            </svg>
-          )
-        }
 
         return (
-          <div className="file-message">
-            <div className="file-icon">
-              {getFileIcon()}
-            </div>
-            <div className="file-info">
-              <div className="file-name" title={fileName}>{fileName}</div>
-              <div className="file-meta">
-                {fileSize ? formatFileSize(fileSize) : ''}
+          <div className={`file-message wechat-redpacket-card wechat-special-card wechat-file-card msg-radius ${isSent ? 'wechat-special-sent-side' : ''}`}>
+            <div className="wechat-redpacket-content">
+              <div className="file-info wechat-redpacket-info wechat-file-info">
+                <span className="file-name wechat-file-name" title={fileName}>{fileName}</span>
+                {fileSize ? <span className="file-meta wechat-file-size">{formatFileSize(fileSize)}</span> : null}
               </div>
+              <div className="file-icon">
+                <FileTypeIcon fileName={fileName} />
+              </div>
+            </div>
+            <div className="wechat-redpacket-bottom wechat-file-bottom">
+              <img src={wechatLogoUrl} alt="" className="wechat-file-logo" />
+              <span>微信电脑版</span>
             </div>
           </div>
         )
@@ -12479,55 +12479,48 @@ function MessageBubble({
             ? `${transferPayerName} 转账给 ${transferReceiverName}`
             : undefined
           const stateClass = isReturned ? 'returned' : isExpired ? 'expired' : isReceived ? 'received' : ''
+          const stateStyleClass = isReturned
+            ? 'wechat-transfer-returned'
+            : isExpired
+              ? 'wechat-transfer-overdue'
+              : isReceived
+                ? 'wechat-transfer-received'
+                : ''
+          const stateIcon = isReturned
+            ? transferReturnedIconUrl
+            : isExpired
+              ? transferOverdueIconUrl
+              : isReceived
+                ? transferReceivedIconUrl
+                : transferPendingIconUrl
 
           return (
-            <div className={`transfer-message ${stateClass}`}>
-              <div className="transfer-icon">
-                {isReturned ? (
-                  <svg width="32" height="32" viewBox="0 0 40 40" fill="none">
-                    <circle cx="20" cy="20" r="18" stroke="white" strokeWidth="2" />
-                    <path d="M24 14l-8 6 8 6" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                ) : isExpired ? (
-                  <svg width="32" height="32" viewBox="0 0 40 40" fill="none">
-                    <circle cx="20" cy="20" r="18" stroke="white" strokeWidth="2" />
-                    <path d="M20 12v10M20 28h.01" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
-                  </svg>
-                ) : isReceived ? (
-                  <svg width="32" height="32" viewBox="0 0 40 40" fill="none">
-                    <circle cx="20" cy="20" r="18" stroke="white" strokeWidth="2" />
-                    <path d="M12 20l6 6 10-12" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                ) : (
-                  <svg width="32" height="32" viewBox="0 0 40 40" fill="none">
-                    <circle cx="20" cy="20" r="18" stroke="white" strokeWidth="2" />
-                    <path d="M12 20h16M20 12l8 8-8 8" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
+            <div className={`transfer-message wechat-transfer-card msg-radius ${stateClass} ${stateStyleClass} ${isSent ? 'wechat-transfer-sent-side' : 'wechat-transfer-received-side'}`}>
+              <div className="wechat-transfer-content">
+                <img src={stateIcon} className="transfer-icon wechat-transfer-icon" alt="" />
+                <div className="transfer-info wechat-transfer-info">
+                  <span className="transfer-amount wechat-transfer-amount">{displayAmount}</span>
+                  <span className="transfer-label wechat-transfer-status">{statusLabel}</span>
+                  {transferDesc && <span className="transfer-desc">{transferDesc}</span>}
+                  {payMemo && <span className="transfer-memo">{payMemo}</span>}
+                </div>
               </div>
-              <div className="transfer-info">
-                <div className="transfer-amount">{displayAmount}</div>
-                {transferDesc && <div className="transfer-desc">{transferDesc}</div>}
-                {payMemo && <div className="transfer-memo">{payMemo}</div>}
-                <div className="transfer-label">{statusLabel}</div>
-              </div>
+              <div className="wechat-transfer-bottom"><span>微信转账</span></div>
             </div>
           )
         } catch (e) {
           console.error('[Transfer Debug] Parse error:', e)
           const feedesc = title || '微信转账'
           return (
-            <div className="transfer-message">
-              <div className="transfer-icon">
-                <svg width="32" height="32" viewBox="0 0 40 40" fill="none">
-                  <circle cx="20" cy="20" r="18" stroke="white" strokeWidth="2" />
-                  <path d="M12 20h16M20 12l8 8-8 8" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+            <div className={`transfer-message wechat-transfer-card msg-radius ${isSent ? 'wechat-transfer-sent-side' : 'wechat-transfer-received-side'}`}>
+              <div className="wechat-transfer-content">
+                <img src={transferPendingIconUrl} className="transfer-icon wechat-transfer-icon" alt="" />
+                <div className="transfer-info wechat-transfer-info">
+                  <span className="transfer-amount wechat-transfer-amount">{feedesc}</span>
+                  <span className="transfer-label wechat-transfer-status">待收款</span>
+                </div>
               </div>
-              <div className="transfer-info">
-                <div className="transfer-amount">{feedesc}</div>
-                <div className="transfer-label">微信转账</div>
-              </div>
+              <div className="wechat-transfer-bottom"><span>微信转账</span></div>
             </div>
           )
         }

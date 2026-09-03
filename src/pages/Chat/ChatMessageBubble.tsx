@@ -112,7 +112,7 @@ function ChatMessageBubble({
               onAvatarContextMenu?.(event, message, avatarProfile)
             }}
           >
-            <Avatar src={avatarUrl} name={avatarName} size={36} className="bubble-avatar" />
+            <Avatar src={avatarUrl} name={avatarName} size={34} shape="rounded" className="bubble-avatar" />
           </div>
           <div className="bubble-body">
             {isGroupChat && !isSent && (
