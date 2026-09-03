@@ -247,7 +247,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     resolveTransferDisplayNames: (chatroomId: string, payerUsername: string, receiverUsername: string) =>
       ipcRenderer.invoke('chat:resolveTransferDisplayNames', chatroomId, payerUsername, receiverUsername),
     getMyAvatarUrl: () => ipcRenderer.invoke('chat:getMyAvatarUrl'),
-    downloadEmoji: (cdnUrl: string, md5?: string) => ipcRenderer.invoke('chat:downloadEmoji', cdnUrl, md5),
+    downloadEmoji: (cdnUrl: string, md5?: string, extra?: { encryptUrl?: string; aesKey?: string; thumbUrl?: string }) =>
+      ipcRenderer.invoke('chat:downloadEmoji', cdnUrl, md5, extra),
     getCachedMessages: (sessionId: string) => ipcRenderer.invoke('chat:getCachedMessages', sessionId),
     clearCurrentAccountData: (options: { clearCache?: boolean; clearExports?: boolean }) =>
       ipcRenderer.invoke('chat:clearCurrentAccountData', options),

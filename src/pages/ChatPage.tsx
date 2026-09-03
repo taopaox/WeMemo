@@ -333,6 +333,43 @@ function toRenderableImageSrc(path?: string): string | undefined {
   return raw
 }
 
+function parseEmojiMetaFromContent(content?: string): {
+  cdnUrl?: string
+  md5?: string
+  thumbUrl?: string
+  encryptUrl?: string
+  aesKey?: string
+} {
+  const raw = String(content || '')
+  if (!raw) return {}
+  const pick = (name: string): string | undefined => {
+    const quoted = new RegExp(`(?:^|[\\s<])${name}\\s*=\\s*['"]([^'"]*)['"]`, 'i').exec(raw)
+    const token = String(quoted?.[1] || '').replace(/&amp;/g, '&').trim()
+    return token || undefined
+  }
+  return {
+    cdnUrl: pick('cdnurl') || pick('externurl'),
+    md5: pick('md5'),
+    thumbUrl: pick('thumburl') || pick('cdnthumburl'),
+    encryptUrl: pick('encrypturl'),
+    aesKey: pick('aeskey')
+  }
+}
+
+function hasEmojiSource(message: Pick<Message, 'emojiCdnUrl' | 'emojiLocalPath' | 'emojiEncryptUrl' | 'emojiThumbUrl' | 'emojiMd5' | 'rawContent' | 'content'>): boolean {
+  if (
+    message.emojiCdnUrl ||
+    message.emojiLocalPath ||
+    message.emojiEncryptUrl ||
+    message.emojiThumbUrl ||
+    message.emojiMd5
+  ) {
+    return true
+  }
+  const parsed = parseEmojiMetaFromContent(message.rawContent || message.content)
+  return Boolean(parsed.cdnUrl || parsed.encryptUrl || parsed.thumbUrl || parsed.md5)
+}
+
 function getChatRecordPreviewText(item: ChatRecordItem): string {
   const text = normalizeChatRecordText(item.datadesc) || normalizeChatRecordText(item.datatitle)
   if (item.datatype === 17) {
@@ -9592,7 +9629,7 @@ const buildVoiceCacheIdentity = (
 // 引用消息中的动画表情组件
 function QuotedEmoji({ cdnUrl, md5 }: { cdnUrl: string; md5?: string }) {
   const cacheKey = md5 || cdnUrl
-  const [localPath, setLocalPath] = useState<string | undefined>(() => emojiDataUrlCache.get(cacheKey))
+  const [localPath, setLocalPath] = useState<string | undefined>(() => toRenderableImageSrc(emojiDataUrlCache.get(cacheKey)))
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(false)
 
@@ -9601,11 +9638,14 @@ function QuotedEmoji({ cdnUrl, md5 }: { cdnUrl: string; md5?: string }) {
     setLoading(true)
     window.electronAPI.chat.downloadEmoji(cdnUrl, md5).then((result: { success: boolean; localPath?: string }) => {
       if (result.success && result.localPath) {
-        emojiDataUrlCache.set(cacheKey, result.localPath)
-        setLocalPath(result.localPath)
-      } else {
-        setError(true)
+        const renderPath = toRenderableImageSrc(result.localPath)
+        if (renderPath) {
+          emojiDataUrlCache.set(cacheKey, renderPath)
+          setLocalPath(renderPath)
+          return
+        }
       }
+      setError(true)
     }).catch(() => setError(true)).finally(() => setLoading(false))
   }, [cdnUrl, md5, cacheKey, localPath, loading, error])
 
@@ -10009,9 +10049,9 @@ function MessageBubble({
   const [emojiLoading, setEmojiLoading] = useState(false)
 
   // 缓存相关的 state 必须在所有 Hooks 之前声明
-  const cacheKey = message.emojiMd5 || message.emojiCdnUrl || ''
+  const cacheKey = message.emojiMd5 || message.emojiCdnUrl || message.emojiEncryptUrl || message.emojiThumbUrl || ''
   const [emojiLocalPath, setEmojiLocalPath] = useState<string | undefined>(
-    () => emojiDataUrlCache.get(cacheKey) || message.emojiLocalPath
+    () => toRenderableImageSrc(emojiDataUrlCache.get(cacheKey) || message.emojiLocalPath)
   )
   const imageCacheKey = message.imageMd5 || message.imageDatName || `local:${message.localId}`
   const [imageLocalPath, setImageLocalPath] = useState<string | undefined>(
@@ -10279,10 +10319,10 @@ function MessageBubble({
 
   // 下载表情包
   const downloadEmoji = () => {
-    if (!message.emojiCdnUrl || emojiLoading) return
+    if (emojiLoading) return
+    if (!hasEmojiSource(message)) return
 
-    // 先检查缓存
-    const cached = emojiDataUrlCache.get(cacheKey)
+    const cached = toRenderableImageSrc(emojiDataUrlCache.get(cacheKey))
     if (cached) {
       captureEmojiResizeBaseline()
       setEmojiLocalPath(cached)
@@ -10292,11 +10332,18 @@ function MessageBubble({
 
     setEmojiLoading(true)
     setEmojiError(false)
-    window.electronAPI.chat.downloadEmoji(message.emojiCdnUrl, message.emojiMd5).then((result: { success: boolean; localPath?: string; error?: string }) => {
-      if (result.success && result.localPath) {
-        emojiDataUrlCache.set(cacheKey, result.localPath)
+    const parsed = parseEmojiMetaFromContent(message.rawContent || message.content)
+    window.electronAPI.chat.downloadEmoji(message.emojiCdnUrl || parsed.cdnUrl || '', message.emojiMd5 || parsed.md5, {
+      encryptUrl: message.emojiEncryptUrl || parsed.encryptUrl,
+      aesKey: message.emojiAesKey || parsed.aesKey,
+      thumbUrl: message.emojiThumbUrl || parsed.thumbUrl
+    }).then((result: { success: boolean; localPath?: string; error?: string }) => {
+      const renderPath = toRenderableImageSrc(result.localPath)
+      if (result.success && renderPath) {
+        emojiDataUrlCache.set(cacheKey, renderPath)
         captureEmojiResizeBaseline()
-        setEmojiLocalPath(result.localPath)
+        setEmojiLocalPath(renderPath)
+        setEmojiError(false)
       } else {
         setEmojiError(true)
       }
@@ -10393,16 +10440,18 @@ function MessageBubble({
   // 自动下载表情包
   useEffect(() => {
     if (emojiLocalPath) return
-    // 后端已从本地缓存找到文件（转发表情包无 CDN URL 的情况）
     if (isEmoji && message.emojiLocalPath) {
-      captureEmojiResizeBaseline()
-      setEmojiLocalPath(message.emojiLocalPath)
-      return
+      const renderPath = toRenderableImageSrc(message.emojiLocalPath)
+      if (renderPath) {
+        captureEmojiResizeBaseline()
+        setEmojiLocalPath(renderPath)
+        return
+      }
     }
-    if (isEmoji && message.emojiCdnUrl && !emojiLoading && !emojiError) {
+    if (isEmoji && hasEmojiSource(message) && !emojiLoading && !emojiError) {
       downloadEmoji()
     }
-  }, [isEmoji, message.emojiCdnUrl, message.emojiLocalPath, emojiLocalPath, emojiLoading, emojiError, captureEmojiResizeBaseline])
+  }, [isEmoji, message.emojiCdnUrl, message.emojiEncryptUrl, message.emojiThumbUrl, message.emojiLocalPath, emojiLocalPath, emojiLoading, emojiError, captureEmojiResizeBaseline])
 
   const requestImageDecrypt = useCallback(async (forceUpdate = false, silent = false): Promise<SharedImageDecryptResult> => {
     if (!isImage) return { success: false }
@@ -12528,26 +12577,28 @@ function MessageBubble({
 
     // 表情包消息
     if (isEmoji) {
-      // ... (keep existing emoji logic)
-      // 没有 cdnUrl 或加载失败，显示占位符
-      if ((!message.emojiCdnUrl && !message.emojiLocalPath) || emojiError) {
+      const renderableEmojiSrc = toRenderableImageSrc(emojiLocalPath)
+      if (renderableEmojiSrc && !emojiError) {
         return (
           <div className="emoji-message-wrapper" ref={emojiContainerRef}>
-            <div className="emoji-unavailable">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M8 15s1.5 2 4 2 4-2 4-2" />
-                <line x1="9" y1="9" x2="9.01" y2="9" />
-                <line x1="15" y1="9" x2="15.01" y2="9" />
-              </svg>
-              <span>表情包未缓存</span>
-            </div>
+            <img
+              src={renderableEmojiSrc}
+              alt="表情"
+              className="emoji-image"
+              onLoad={() => {
+                setEmojiError(false)
+                stabilizeEmojiScrollAfterResize()
+              }}
+              onError={() => {
+                emojiResizeBaselineRef.current = null
+                setEmojiError(true)
+              }}
+            />
           </div>
         )
       }
 
-      // 显示加载中
-      if (emojiLoading || !emojiLocalPath) {
+      if ((emojiLoading || hasEmojiSource(message)) && !emojiError) {
         return (
           <div className="emoji-message-wrapper" ref={emojiContainerRef}>
             <div className="emoji-loading">
@@ -12557,22 +12608,17 @@ function MessageBubble({
         )
       }
 
-      // 显示表情图片
       return (
         <div className="emoji-message-wrapper" ref={emojiContainerRef}>
-          <img
-            src={emojiLocalPath}
-            alt="表情"
-            className="emoji-image"
-            onLoad={() => {
-              setEmojiError(false)
-              stabilizeEmojiScrollAfterResize()
-            }}
-            onError={() => {
-              emojiResizeBaselineRef.current = null
-              setEmojiError(true)
-            }}
-          />
+          <div className="emoji-unavailable">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M8 15s1.5 2 4 2 4-2 4-2" />
+              <line x1="9" y1="9" x2="9.01" y2="9" />
+              <line x1="15" y1="9" x2="15.01" y2="9" />
+            </svg>
+            <span>表情包未缓存</span>
+          </div>
         </div>
       )
     }
@@ -12631,7 +12677,7 @@ function MessageBubble({
       isImage={isImage}
       isVideo={isVideo}
       isVoice={isVoice}
-      emojiHasAsset={Boolean(message.emojiCdnUrl || message.emojiLocalPath)}
+      emojiHasAsset={hasEmojiSource(message)}
       emojiError={emojiError}
       avatarUrl={avatarUrl}
       isGroupChat={isGroupChat}

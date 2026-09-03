@@ -669,7 +669,11 @@ export interface ElectronAPI {
       error?: string
     }>
     getMyAvatarUrl: () => Promise<{ success: boolean; avatarUrl?: string; error?: string }>
-    downloadEmoji: (cdnUrl: string, md5?: string) => Promise<{ success: boolean; localPath?: string; error?: string }>
+    downloadEmoji: (
+      cdnUrl: string,
+      md5?: string,
+      extra?: { encryptUrl?: string; aesKey?: string; thumbUrl?: string }
+    ) => Promise<{ success: boolean; localPath?: string; error?: string }>
     searchMessages: (keyword: string, sessionId?: string, limit?: number, offset?: number, beginTimestamp?: number, endTimestamp?: number) => Promise<{ success: boolean; messages?: Message[]; error?: string }>
     close: () => Promise<boolean>
     getSessionDetail: (sessionId: string) => Promise<{

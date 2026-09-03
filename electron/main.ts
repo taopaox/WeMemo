@@ -2808,8 +2808,8 @@ function registerIpcHandlers() {
     return chatService.getMyAvatarUrl()
   })
 
-  ipcMain.handle('chat:downloadEmoji', async (_, cdnUrl: string, md5?: string) => {
-    return chatService.downloadEmoji(cdnUrl, md5)
+  ipcMain.handle('chat:downloadEmoji', async (_, cdnUrl: string, md5?: string, extra?: { encryptUrl?: string; aesKey?: string; thumbUrl?: string }) => {
+    return chatService.downloadEmoji(cdnUrl, md5, extra)
   })
 
   ipcMain.handle('chat:close', async () => {
