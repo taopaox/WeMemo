@@ -1636,6 +1636,134 @@ export interface ElectronAPI {
       status?: 'all' | 'pending' | 'received' | 'returned' | 'expired' | 'unknown'
     }) => Promise<{ success: boolean; filePath?: string; error?: string }>
   }
+  favorites: {
+    list: (query?: {
+      q?: string
+      kind?: string
+      tagId?: number
+      limit?: number
+      offset?: number
+    }) => Promise<{
+      success: boolean
+      items?: Array<{
+        localId: number
+        serverId: number
+        type: number
+        typeLabel: string
+        title: string
+        summary: string
+        textBlocks: string[]
+        attachments: Array<{
+          dataId: string
+          htmlId: string
+          dataType: number
+          typeLabel: string
+          renderType: string
+          title: string
+          description: string
+          dataFormat: string
+          fullSize: number
+          fullMd5: string
+          thumbMd5: string
+          url: string
+          preview?: string
+          duration: number
+          sourceName: string
+          sourceUsername: string
+          sourceAvatar: string
+          sourceTime: string
+          location?: {
+            latitude: string
+            longitude: string
+            poiname: string
+            label: string
+            address: string
+          } | null
+          linkType?: string
+          finderUsername?: string
+          objectId?: string
+          mediaUrl?: string
+          hasRemoteResource: boolean
+          isInternal: boolean
+        }>
+        displayItems: Array<{
+          dataId: string
+          dataType: number
+          typeLabel: string
+          renderType: string
+          title: string
+          description: string
+          dataFormat: string
+          fullSize: number
+          fullMd5: string
+          thumbMd5: string
+          url: string
+          preview?: string
+          duration: number
+          sourceName: string
+          sourceUsername: string
+          sourceAvatar: string
+          sourceTime: string
+          location?: {
+            latitude: string
+            longitude: string
+            poiname: string
+            label: string
+            address: string
+          } | null
+          linkType?: string
+          finderUsername?: string
+          mediaUrl?: string
+        }>
+        itemCount: number
+        updateTime: number
+        updateTimeText: string
+        sourceUsername: string
+        sourceChatUsername: string
+        sourceToUsername: string
+        senderUsername: string
+        conversationUsername: string
+        sourceName: string
+        sourceId: string
+        tags: Array<{ localId: number; serverId: number; name: string; seq: number }>
+        tagIds: number[]
+        sourceContact?: { username: string; displayName: string; avatarUrl?: string; isGroup?: boolean }
+        sourceChatContact?: { username: string; displayName: string; avatarUrl?: string; isGroup?: boolean }
+        senderContact?: { username: string; displayName: string; avatarUrl?: string; isGroup?: boolean }
+        conversationContact?: { username: string; displayName: string; avatarUrl?: string; isGroup?: boolean }
+        chatRecordList?: Array<{
+          datatype: number
+          sourcename: string
+          sourcetime: string
+          sourceheadurl?: string
+          datadesc?: string
+          datatitle?: string
+          fileext?: string
+          datasize?: number
+          md5?: string
+          fullmd5?: string
+          thumbfullmd5?: string
+          duration?: number
+          dataurl?: string
+          chatRecordTitle?: string
+          chatRecordDesc?: string
+        }>
+      }>
+      total?: number
+      databaseTotal?: number
+      hasMore?: boolean
+      tags?: Array<{ localId: number; serverId: number; name: string; seq: number }>
+      typeCounts?: Record<string, number>
+      error?: string
+    }>
+    export: (query: {
+      filePath: string
+      format: 'json' | 'csv'
+      q?: string
+      kind?: string
+      tagId?: number
+    }) => Promise<{ success: boolean; filePath?: string; error?: string }>
+  }
   sns: {
     getTimeline: (limit: number, offset: number, usernames?: string[], keyword?: string, startTime?: number, endTime?: number) => Promise<{
       success: boolean

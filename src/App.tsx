@@ -48,6 +48,7 @@ const DualReportPage = lazy(() => import('./pages/DualReportPage'))
 const DualReportWindow = lazy(() => import('./pages/DualReportWindow'))
 const ExportPage = lazy(() => import('./pages/Export/ExportPage'))
 const PaymentsPage = lazy(() => import('./pages/PaymentsPage'))
+const FavoritesPage = lazy(() => import('./pages/FavoritesPage'))
 
 function RouteStateRedirect({ to }: { to: string }) {
   const location = useLocation()
@@ -798,6 +799,7 @@ function App() {
                 <Route path="/biz" element={<BizPage />} />
                 <Route path="/contacts" element={<ContactsPage />} />
                 <Route path="/payments" element={<PaymentsPage />} />
+                <Route path="/favorites" element={<FavoritesPage />} />
                 <Route path="/resources" element={<ResourcesPage />} />
                 <Route path="/backup" element={<BackupPage />} />
                 <Route path="/chat-history/:sessionId/:messageId" element={<ChatHistoryPage />} />

@@ -578,6 +578,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
       status?: 'all' | 'pending' | 'received' | 'returned' | 'expired' | 'unknown'
     }) => ipcRenderer.invoke('payments:export', query)
   },
+
+  favorites: {
+    list: (query?: {
+      q?: string
+      kind?: string
+      tagId?: number
+      limit?: number
+      offset?: number
+    }) => ipcRenderer.invoke('favorites:list', query),
+    export: (query: {
+      filePath: string
+      format: 'json' | 'csv'
+      q?: string
+      kind?: string
+      tagId?: number
+    }) => ipcRenderer.invoke('favorites:export', query)
+  },
   sns: {
     getTimeline: (limit: number, offset: number, usernames?: string[], keyword?: string, startTime?: number, endTime?: number) =>
       ipcRenderer.invoke('sns:getTimeline', limit, offset, usernames, keyword, startTime, endTime),

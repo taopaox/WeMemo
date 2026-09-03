@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Home, MessageSquare, BarChart3, FileText, Settings, Download, Aperture, UserCircle, Lock, LockOpen, ChevronUp, FolderClosed, Footprints, Users, ArchiveRestore, Sparkles, Wallet } from 'lucide-react'
+import { Home, MessageSquare, BarChart3, FileText, Settings, Download, Aperture, UserCircle, Lock, LockOpen, ChevronUp, FolderClosed, Footprints, Users, ArchiveRestore, Sparkles, Wallet, Bookmark } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
 import * as configService from '../services/config'
 import { onExportSessionStatus, requestExportSessionStatus } from '../services/exportBridge'
@@ -333,6 +333,16 @@ function Sidebar({ collapsed }: SidebarProps) {
           >
             <span className="nav-icon"><MessageSquare size={20} /></span>
             <span className="nav-label">聊天</span>
+          </NavLink>
+
+          {/* 收藏 */}
+          <NavLink
+            to="/favorites"
+            className={`nav-item ${isActive('/favorites') ? 'active' : ''}`}
+            title={collapsed ? '收藏' : undefined}
+          >
+            <span className="nav-icon"><Bookmark size={20} /></span>
+            <span className="nav-label">收藏</span>
           </NavLink>
 
           {/* 朋友圈 */}
