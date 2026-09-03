@@ -190,6 +190,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
 
+  databaseBrowser: {
+    inspect: (options?: { forceRefresh?: boolean }) => ipcRenderer.invoke('database-browser:inspect', options),
+    onProgress: (callback: (progress: any) => void) => {
+      const listener = (_: unknown, progress: any) => callback(progress)
+      ipcRenderer.on('database-browser:progress', listener)
+      return () => ipcRenderer.removeListener('database-browser:progress', listener)
+    }
+  },
+
   // 密钥获取
   key: {
     autoGetDbKey: () => ipcRenderer.invoke('key:autoGetDbKey'),

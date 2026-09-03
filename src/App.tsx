@@ -39,6 +39,7 @@ const ChatHistoryPage = lazy(() => import('./pages/ChatHistoryPage'))
 const NotificationWindow = lazy(() => import('./pages/NotificationWindow'))
 const AccountManagementPage = lazy(() => import('./pages/AccountManagementPage'))
 const BackupPage = lazy(() => import('./pages/BackupPage'))
+const DatabaseBrowserPage = lazy(() => import('./pages/DatabaseBrowserPage'))
 const InsightInboxPage = lazy(() => import('./pages/InsightInboxPage'))
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'))
 const GroupAnalyticsPage = lazy(() => import('./pages/GroupAnalyticsPage'))
@@ -801,6 +802,7 @@ function App() {
                 <Route path="/payments" element={<PaymentsPage />} />
                 <Route path="/favorites" element={<FavoritesPage />} />
                 <Route path="/resources" element={<ResourcesPage />} />
+                <Route path="/database-browser" element={<DatabaseBrowserPage />} />
                 <Route path="/backup" element={<BackupPage />} />
                 <Route path="/chat-history/:sessionId/:messageId" element={<ChatHistoryPage />} />
                 <Route path="/chat-history-inline/:payloadId" element={<ChatHistoryPage />} />

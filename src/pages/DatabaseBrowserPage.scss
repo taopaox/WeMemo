@@ -1,0 +1,275 @@
+.database-browser-page {
+  height: 100%;
+  overflow: auto;
+  padding: 20px;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+}
+
+.database-browser-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+
+  h1 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 650;
+  }
+
+  p {
+    margin: 6px 0 0;
+    color: var(--text-secondary);
+    font-size: 14px;
+  }
+}
+
+.database-browser-refresh {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover:not(:disabled) { background: var(--bg-tertiary); }
+  &:disabled { cursor: not-allowed; opacity: 0.6; }
+}
+
+.database-browser-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+
+  article {
+    min-height: 92px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 13px;
+    background: var(--bg-secondary);
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 7px 9px;
+    align-items: center;
+
+    svg { color: var(--primary); }
+    span { color: var(--text-secondary); font-size: 12px; }
+    strong { grid-column: 1 / -1; font-size: 22px; line-height: 1; }
+  }
+}
+
+.database-browser-status {
+  min-height: 76px;
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+  padding: 12px 0;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  &.error { color: var(--danger); }
+
+  > div:last-child { flex: 1; min-width: 0; }
+  strong { display: block; font-size: 14px; }
+  span {
+    display: block;
+    margin-top: 4px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.database-browser-status-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  background: var(--bg-secondary);
+}
+
+.database-browser-progress {
+  height: 4px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+
+  i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--primary);
+    transition: width 0.2s ease;
+  }
+}
+
+.spinning { animation: database-browser-spin 0.9s linear infinite; }
+@keyframes database-browser-spin { to { transform: rotate(360deg); } }
+
+.database-browser-source {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.6fr) minmax(260px, 2fr) minmax(120px, 0.5fr);
+  gap: 12px;
+  margin-bottom: 18px;
+
+  > div {
+    min-width: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 9px;
+    background: var(--bg-secondary);
+    padding: 11px 12px;
+  }
+
+  span { display: block; margin-bottom: 5px; color: var(--text-secondary); font-size: 11px; }
+  strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+}
+
+.database-browser-resources,
+.database-browser-databases {
+  margin-top: 18px;
+}
+
+.database-browser-section-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+
+  h2 { margin: 0; font-size: 17px; }
+  p { margin: 4px 0 0; color: var(--text-secondary); font-size: 12px; }
+}
+
+.database-browser-warning {
+  color: var(--warning);
+  font-size: 12px;
+}
+
+.database-browser-resource-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+
+  > div {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 9px;
+    border: 1px solid var(--border-color);
+    border-radius: 9px;
+    padding: 11px 12px;
+    background: var(--bg-secondary);
+  }
+
+  svg { color: var(--primary); }
+  span { color: var(--text-secondary); font-size: 12px; }
+  strong { font-size: 15px; }
+}
+
+.database-browser-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 20px;
+}
+
+.database-browser-database {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  overflow: hidden;
+
+  summary {
+    min-height: 62px;
+    padding: 10px 13px;
+    display: grid;
+    grid-template-columns: auto minmax(180px, 1fr) 90px 72px 100px 78px;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    list-style: none;
+
+    &::-webkit-details-marker { display: none; }
+    &:hover { background: var(--bg-hover); }
+  }
+}
+
+.database-browser-db-icon {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--primary);
+  background: var(--primary-light);
+}
+
+.database-browser-db-name {
+  min-width: 0;
+
+  strong, em { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  strong { font-size: 13px; }
+  em { margin-top: 4px; color: var(--text-secondary); font-size: 11px; font-style: normal; }
+}
+
+.database-browser-db-kind {
+  justify-self: start;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: var(--primary);
+  background: var(--primary-light);
+  font-size: 11px;
+}
+
+.database-browser-db-stat,
+.database-browser-db-size {
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-align: right;
+}
+
+.database-browser-table-list {
+  border-top: 1px solid var(--border-color);
+  padding: 0 13px 10px 57px;
+  background: var(--bg-primary);
+}
+
+.database-browser-table-head,
+.database-browser-table-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 130px;
+  gap: 12px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+}
+
+.database-browser-table-head { color: var(--text-secondary); font-size: 11px; }
+.database-browser-table-row strong { text-align: right; font-weight: 600; }
+.database-browser-empty { padding: 14px 10px 4px; color: var(--text-secondary); font-size: 12px; }
+
+@media (max-width: 900px) {
+  .database-browser-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .database-browser-source { grid-template-columns: 1fr; }
+  .database-browser-database summary {
+    grid-template-columns: auto minmax(150px, 1fr) 72px 78px;
+  }
+  .database-browser-db-kind,
+  .database-browser-db-stat:first-of-type { display: none; }
+}

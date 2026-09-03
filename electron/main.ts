@@ -40,6 +40,7 @@ import { backupService } from './services/backupService'
 import { imageDownloadService } from './services/imageDownloadService'
 import { paymentService } from './services/paymentService'
 import { favoritesService } from './services/favoritesService'
+import { databaseBrowserService } from './services/databaseBrowserService'
 
 // 屏幕采集去节流（仅影响通知玻璃的 Chromium 流回退管线；Windows 主路径为
 // 原生面板渲染，不经过 Chromium 采集）：默认桌面采集 CPU 预算限制在 50%，
@@ -2702,6 +2703,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle('backup:restore', async (_, payload: { archivePath: string }) => {
     return backupService.restoreBackup(payload.archivePath)
+  })
+
+  ipcMain.handle('database-browser:inspect', async (_, payload?: { forceRefresh?: boolean }) => {
+    return databaseBrowserService.inspect(payload?.forceRefresh === true)
   })
 
 
