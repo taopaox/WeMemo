@@ -1479,7 +1479,7 @@ const SessionItem = React.memo(function SessionItem({
         onClick={() => onSelect(session)}
       >
         <div className="fold-entry-avatar">
-          <MessageSquare size={22} />
+          <MessageSquare size={18} />
         </div>
         <div className="session-info">
           <div className="session-top">
@@ -1502,7 +1502,7 @@ const SessionItem = React.memo(function SessionItem({
         onClick={() => onSelect(session)}
       >
         <div className="biz-entry-avatar">
-          <Newspaper size={22} />
+          <Newspaper size={18} />
         </div>
         <div className="session-info">
           <div className="session-top">
@@ -1543,7 +1543,7 @@ const SessionItem = React.memo(function SessionItem({
       <Avatar
         src={session.avatarUrl}
         name={sessionDisplayName}
-        size={48}
+        size={36}
         className={session.username.includes('@chatroom') ? 'group' : ''}
       />
       <div className="session-info">
@@ -8006,7 +8006,7 @@ function ChatPage(props: ChatPageProps) {
                         <Avatar
                           src={session?.avatarUrl}
                           name={displayNameOrFallback(sessionId, session?.displayName)}
-                          size={48}
+                          size={36}
                         />
                         <div className="session-content">
                           <div className="session-top">

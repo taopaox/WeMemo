@@ -340,41 +340,40 @@
       }
 
       .session-item {
-        border-bottom: 1px solid var(--border-color);
-        padding: 12px 16px;
-        transition: all 0.2s;
+        height: 56px;
+        padding: 0 12px;
+        border-bottom: 1px solid var(--session-list-item-border, #f1f1f1);
+        transition: background 0.15s;
 
         &:hover {
-          background: var(--bg-hover);
+          background: var(--session-list-item-hover, #eaeaea);
         }
 
         &.active {
-          background: var(--primary-light);
-          border-left: 3px solid var(--primary);
-          padding-left: 13px;
+          background: var(--session-list-item-selected, #dedede);
         }
 
         .session-name {
-          color: var(--text-primary);
+          color: var(--session-list-name, var(--text-primary));
           font-size: 14px;
-          font-weight: 500;
+          font-weight: 400;
         }
 
         .session-time {
-          color: var(--text-tertiary);
+          color: var(--session-list-meta, var(--text-tertiary));
           font-size: 11px;
         }
 
         .session-summary {
-          color: var(--text-secondary);
+          color: var(--session-list-preview, var(--text-secondary));
           font-size: 12px;
         }
       }
 
       .session-avatar {
-        border-radius: 50%;
-        width: 44px !important;
-        height: 44px !important;
+        border-radius: 6px;
+        width: 36px !important;
+        height: 36px !important;
       }
 
       .unread-badge {
@@ -783,22 +782,61 @@
 
 // 左侧会话列表
 .session-sidebar {
+  --session-list-bg: #f7f7f7;
+  --session-list-search-bg: #f7f7f7;
+  --session-list-item-border: #f1f1f1;
+  --session-list-item-bg: transparent;
+  --session-list-item-hover: #eaeaea;
+  --session-list-item-selected: #dedede;
+  --session-list-item-selected-hover: #d3d3d3;
+  --session-list-name: var(--text-primary);
+  --session-list-meta: #6b7280;
+  --session-list-preview: #6b7280;
+  --contact-search-bg: #eaeaea;
+  --contact-search-focus-bg: #ffffff;
+  --contact-search-focus-ring: rgba(3, 193, 96, 0.2);
+  --contact-search-icon: #9ca3af;
+  --contact-search-text: var(--text-primary);
+  --contact-search-placeholder: #9ca3af;
+  --contact-search-clear: #9ca3af;
+
   flex: 0 0 30%;
   min-width: 280px;
   max-width: 400px;
   display: flex;
   flex-direction: column;
-  background: var(--bg-secondary);
+  background: var(--session-list-bg);
   border-radius: 16px;
   overflow: hidden;
 }
 
+[data-mode='dark'] .session-sidebar {
+  --session-list-bg: #191919;
+  --session-list-search-bg: #191919;
+  --session-list-item-border: #2d2d2d;
+  --session-list-item-bg: #242424;
+  --session-list-item-hover: #2f2f2f;
+  --session-list-item-selected: #3a3a3a;
+  --session-list-item-selected-hover: #444444;
+  --session-list-name: #f5f5f5;
+  --session-list-meta: #c4c4c4;
+  --session-list-preview: #b8b8b8;
+  --contact-search-bg: #2f2f2f;
+  --contact-search-focus-bg: #2f2f2f;
+  --contact-search-focus-ring: rgba(62, 181, 117, 0.22);
+  --contact-search-icon: #9f9f9f;
+  --contact-search-placeholder: #9f9f9f;
+  --contact-search-clear: #9f9f9f;
+}
+
 .session-header {
-  padding: 16px 16px 12px;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   min-height: 56px;
+  background: var(--session-list-search-bg, var(--session-list-bg, #f7f7f7));
+  border-bottom: 1px solid var(--session-list-item-border, #f1f1f1);
 
   h2 {
     font-size: 18px;
@@ -869,15 +907,24 @@
     flex: 1;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    background: var(--bg-primary);
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
+    background: var(--contact-search-bg, #eaeaea);
     border-radius: 8px;
-    animation: searchExpand 0.25s ease-out;
     min-width: 0;
+    transition: background 0.2s, box-shadow 0.2s;
+
+    &:focus-within {
+      background: var(--contact-search-focus-bg, #ffffff);
+      box-shadow: 0 0 0 2px var(--contact-search-focus-ring, rgba(3, 193, 96, 0.2));
+    }
 
     svg {
-      color: var(--text-tertiary);
+      width: 16px;
+      height: 16px;
+      margin-left: 10px;
+      color: var(--contact-search-icon, #9ca3af);
       flex-shrink: 0;
     }
 
@@ -887,30 +934,33 @@
       background: transparent;
       outline: none;
       font-size: 14px;
-      color: var(--text-primary);
+      line-height: 20px;
+      padding: 8px;
+      color: var(--contact-search-text, var(--text-primary));
       min-width: 0;
 
       &::placeholder {
-        color: var(--text-tertiary);
+        color: var(--contact-search-placeholder, #9ca3af);
       }
     }
 
     .close-search {
-      width: 20px;
-      height: 20px;
+      width: auto;
+      height: auto;
+      padding: 8px;
       border: none;
-      background: var(--bg-tertiary);
-      border-radius: 50%;
+      background: transparent;
+      border-radius: 0;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: var(--text-tertiary);
+      color: var(--contact-search-clear, #9ca3af);
       flex-shrink: 0;
 
       &:hover {
-        background: var(--border-color);
-        color: var(--text-primary);
+        background: transparent;
+        color: var(--contact-search-text, var(--text-primary));
       }
     }
   }
@@ -929,7 +979,7 @@
     width: 100%;
     display: flex;
     align-items: center;
-    padding: 16px 16px 12px;
+    padding: 10px;
     min-height: 56px;
     transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   }
@@ -1001,6 +1051,7 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  background: var(--session-list-bg, #f7f7f7);
 
   // 滚动条样式
   &::-webkit-scrollbar {
@@ -1024,29 +1075,31 @@
 .session-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
+  gap: 10px;
+  height: 56px;
+  padding: 0 12px;
   cursor: pointer;
   transition: background 0.15s;
-  border-bottom: 1px solid var(--border-color);
-
-  &:last-child {
-    border-bottom: none;
-  }
+  background: var(--session-list-item-bg, transparent);
+  border-bottom: 1px solid var(--session-list-item-border, #f1f1f1);
 
   &:hover {
-    background: var(--bg-hover);
+    background: var(--session-list-item-hover, #eaeaea);
   }
 
   &.active {
-    background: var(--primary-light);
+    background: var(--session-list-item-selected, #dedede);
+
+    &:hover {
+      background: var(--session-list-item-selected-hover, #d3d3d3);
+    }
   }
 }
 
 .session-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   display: flex;
   align-items: center;
@@ -1069,7 +1122,7 @@
 
   .avatar-letter {
     color: white;
-    font-size: 18px;
+    font-size: 13px;
     font-weight: 600;
   }
 
@@ -1095,7 +1148,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .session-top {
@@ -1106,18 +1159,26 @@
 }
 
 .session-name {
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  color: var(--session-list-name, var(--text-primary));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;
+  min-width: 0;
 }
 
 .session-time {
-  font-size: 12px;
-  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 20px;
+  color: var(--session-list-meta, var(--text-tertiary));
+  max-width: 92px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   flex-shrink: 0;
 }
 
@@ -1129,10 +1190,13 @@
 }
 
 .session-summary {
-  font-size: 13px;
-  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--session-list-preview, var(--text-secondary));
   white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
   flex: 1;
 
   .highlight {
@@ -5656,17 +5720,10 @@
 
 // 折叠群入口样式
 .session-item.fold-entry {
-  cursor: pointer;
-  transition: background-color 0.2s;
-
-  &:hover {
-    background: var(--hover-bg, rgba(0,0,0,0.05));
-  }
-
   .fold-entry-avatar {
-    width: 48px;
-    height: 48px;
-    border-radius: 8px;
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
     background: #fff;
     display: flex;
     align-items: center;
@@ -5676,23 +5733,16 @@
   }
 
   .session-name {
-    font-weight: 500;
+    font-weight: 400;
   }
 }
 
 // 公众号入口样式
 .session-item.biz-entry {
-  cursor: pointer;
-  transition: background-color 0.2s;
-
-  &:hover {
-    background: var(--hover-bg, rgba(0,0,0,0.05));
-  }
-
   .biz-entry-avatar {
-    width: 48px;
-    height: 48px;
-    border-radius: 8px;
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
     background: #fff;
     display: flex;
     align-items: center;
@@ -5702,9 +5752,17 @@
   }
 
   .session-name {
-    font-weight: 500;
+    font-weight: 400;
   }
 }
+
+[data-mode='dark'] {
+  .session-item.fold-entry .fold-entry-avatar,
+  .session-item.biz-entry .biz-entry-avatar {
+    background: #2c2c2c;
+  }
+}
+
 // 消息信息弹窗
 .message-info-overlay {
   position: fixed;
@@ -6070,6 +6128,7 @@
   .search-results-list {
     .session-item {
       display: flex;
+      height: auto;
       padding: 12px 16px;
       cursor: pointer;
       border-bottom: 1px solid var(--border-color);
@@ -6141,7 +6200,7 @@
 }
 
 .session-sidebar {
-  background: var(--bg-sidebar);
+  background: var(--session-list-bg, var(--bg-sidebar));
   border-right: 0;
   border-radius: 0;
 }
@@ -6164,7 +6223,7 @@
   background: var(--bg-primary);
 
   .session-sidebar {
-    background: var(--bg-sidebar);
+    background: var(--session-list-bg, var(--bg-sidebar));
     border-right: 0;
     backdrop-filter: none;
   }
