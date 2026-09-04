@@ -1,3 +1,4 @@
+import { registerAnnualReportV2 } from './services/annualReportV2Service'
 import './preload-env'
 import { app, BrowserWindow, ipcMain, nativeTheme, session, Tray, Menu, nativeImage } from 'electron'
 import { Worker } from 'worker_threads'
@@ -2708,6 +2709,8 @@ function registerIpcHandlers() {
   ipcMain.handle('database-browser:inspect', async (_, payload?: { forceRefresh?: boolean }) => {
     return databaseBrowserService.inspect(payload?.forceRefresh === true)
   })
+  ipcMain.handle('database-browser:tables', async (_, database: string) => databaseBrowserService.tables(database))
+  ipcMain.handle('database-browser:read-table', async (_, request: import('../shared/databaseBrowser').BrowseTableRequest) => databaseBrowserService.readTable(request))
 
 
 
@@ -4135,6 +4138,11 @@ function registerIpcHandlers() {
   })
 
   // 年度报告相关
+  registerAnnualReportV2(() => {
+    const cfg = configService || new ConfigService()
+    return { dbPath: cfg.get('dbPath'), decryptKey: cfg.get('decryptKey'), myWxid: cfg.getMyWxidCleaned() }
+  })
+
   ipcMain.handle('annualReport:getAvailableYears', async () => {
     const cfg = configService || new ConfigService()
     configService = cfg

@@ -192,11 +192,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   databaseBrowser: {
     inspect: (options?: { forceRefresh?: boolean }) => ipcRenderer.invoke('database-browser:inspect', options),
-    onProgress: (callback: (progress: any) => void) => {
-      const listener = (_: unknown, progress: any) => callback(progress)
-      ipcRenderer.on('database-browser:progress', listener)
-      return () => ipcRenderer.removeListener('database-browser:progress', listener)
-    }
+    tables: (database: string) => ipcRenderer.invoke('database-browser:tables', database),
+    readTable: (request: import('../shared/databaseBrowser').BrowseTableRequest) => ipcRenderer.invoke('database-browser:read-table', request)
   },
 
   // 密钥获取
@@ -480,6 +477,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // 年度报告
+  annualReportV2: {
+    request: (payload: { method: string; args?: unknown; channel: string }) => ipcRenderer.invoke('annualReportV2:request', payload),
+    onProgress: (callback: (payload: { channel: string; progress: number; status: string }) => void) => {
+      const listener = (_event: unknown, payload: { channel: string; progress: number; status: string }) => callback(payload)
+      ipcRenderer.on('annualReportV2:progress', listener)
+      return () => ipcRenderer.removeListener('annualReportV2:progress', listener)
+    }
+  },
   annualReport: {
     getAvailableYears: () => ipcRenderer.invoke('annualReport:getAvailableYears'),
     startAvailableYearsLoad: () => ipcRenderer.invoke('annualReport:startAvailableYearsLoad'),

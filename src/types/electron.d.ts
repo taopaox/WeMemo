@@ -308,44 +308,6 @@ export interface BackupManifest {
   }
 }
 
-export interface DatabaseBrowserProgress {
-  phase: 'connecting' | 'databases' | 'tables' | 'resources' | 'done' | 'failed'
-  message: string
-  current?: number
-  total?: number
-  detail?: string
-}
-
-export interface DatabaseBrowserOverview {
-  generatedAt: string
-  source: {
-    account: string
-    dbRoot: string
-  }
-  summary: {
-    databaseCount: number
-    tableCount: number
-    rowCount: number
-    resourceCount: number
-  }
-  resources: {
-    images: number
-    videos: number
-    files: number
-  }
-  databases: Array<{
-    name: string
-    relativePath: string
-    kind: string
-    size: number
-    tables: Array<{
-      name: string
-      rows: number | null
-    }>
-  }>
-  unreadableTableCount: number
-}
-
 export type CloseConfirmPayload = {
   canMinimizeToTray: boolean
   restoreMethod?: 'tray' | 'dock'
@@ -593,14 +555,7 @@ export interface ElectronAPI {
     }>
     onProgress: (callback: (progress: BackupProgress) => void) => () => void
   }
-  databaseBrowser: {
-    inspect: (options?: { forceRefresh?: boolean }) => Promise<{
-      success: boolean
-      data?: DatabaseBrowserOverview
-      error?: string
-    }>
-    onProgress: (callback: (progress: DatabaseBrowserProgress) => void) => () => void
-  }
+  databaseBrowser: import('../../shared/databaseBrowser').DatabaseBrowserAPI
   key: {
     autoGetDbKey: () => Promise<{ success: boolean; key?: string; error?: string; logs?: string[] }>
     autoGetImageKey: (manualDir?: string, wxid?: string) => Promise<{ success: boolean; xorKey?: number; aesKey?: string; verified?: boolean; error?: string }>
@@ -1338,6 +1293,10 @@ export interface ElectronAPI {
       count?: number
       error?: string
     }>
+  }
+  annualReportV2: {
+    request: (payload: { method: string; args?: unknown; channel: string }) => Promise<any>
+    onProgress: (callback: (payload: { channel: string; progress: number; status: string }) => void) => () => void
   }
   annualReport: {
     getAvailableYears: () => Promise<{

@@ -1,206 +1,217 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Database, File, Files, HardDrive, Image, RefreshCw, Rows3, Table2, Video } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, Database, KeyRound, RefreshCw, Search, Table2, X } from 'lucide-react'
+import type { BrowseTableRequest, DatabaseCatalog, DatabaseTablePage } from '../../shared/databaseBrowser'
 import './DatabaseBrowserPage.scss'
 
-type Overview = NonNullable<Awaited<ReturnType<typeof window.electronAPI.databaseBrowser.inspect>>['data']>
-type Progress = Parameters<Parameters<typeof window.electronAPI.databaseBrowser.onProgress>[0]>[0]
-
-function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
-  const value = bytes / 1024 ** index
-  return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`
+function cellText(value: unknown): string {
+  if (value === null || value === undefined) return 'NULL'
+  if (typeof value === 'string') return value === '' ? '(空字符串)' : value
+  return typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)
 }
 
 function DatabaseBrowserPage() {
-  const [overview, setOverview] = useState<Overview | null>(null)
-  const [progress, setProgress] = useState<Progress | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-
-  const loadOverview = useCallback(async (forceRefresh = false) => {
-    setLoading(true)
-    setError('')
-    setProgress({ phase: 'connecting', message: '正在连接原始数据库' })
-    try {
-      const result = await window.electronAPI.databaseBrowser.inspect({ forceRefresh })
-      if (!result.success || !result.data) {
-        setError(result.error || '读取数据库概况失败')
-        return
-      }
-      setOverview(result.data)
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : String(loadError))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const [catalog, setCatalog] = useState<DatabaseCatalog | null>(null)
+  const [catalogLoading, setCatalogLoading] = useState(true)
+  const [catalogError, setCatalogError] = useState('')
+  const [revision, setRevision] = useState(0)
+  const [database, setDatabase] = useState('')
+  const [tables, setTables] = useState<string[]>([])
+  const [tablesLoading, setTablesLoading] = useState(false)
+  const [tablesError, setTablesError] = useState('')
+  const [tableFilter, setTableFilter] = useState('')
+  const [request, setRequest] = useState<BrowseTableRequest | null>(null)
+  const [page, setPage] = useState<DatabaseTablePage | null>(null)
+  const [rowsLoading, setRowsLoading] = useState(false)
+  const [rowsError, setRowsError] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const [tab, setTab] = useState<'data' | 'schema'>('data')
+  const [cell, setCell] = useState<{ column: string; value: unknown; row: number } | null>(null)
 
   useEffect(() => {
-    const removeProgressListener = window.electronAPI.databaseBrowser.onProgress(setProgress)
-    void loadOverview(false)
-    return removeProgressListener
-  }, [loadOverview])
+    let cancelled = false
+    setCatalogLoading(true)
+    setCatalogError('')
+    setCatalog(null)
+    setDatabase('')
+    setRequest(null)
+    window.electronAPI.databaseBrowser.inspect({ forceRefresh: revision > 0 }).then(result => {
+      if (cancelled) return
+      if (!result.success || !result.data) throw new Error(result.error || '无法加载数据库')
+      setCatalog(result.data)
+      setDatabase(result.data.databases[0]?.relativePath || '')
+    }).catch(error => {
+      if (!cancelled) setCatalogError(String(error.message || error))
+    }).finally(() => { if (!cancelled) setCatalogLoading(false) })
+    return () => { cancelled = true }
+  }, [revision])
 
-  const percent = progress?.total && progress.total > 0
-    ? Math.min(100, Math.round(((progress.current || 0) / progress.total) * 100))
-    : 8
+  useEffect(() => {
+    let cancelled = false
+    setTables([])
+    setTablesError('')
+    setRequest(null)
+    setSearchInput('')
+    setTableFilter('')
+    if (!database) { setTablesLoading(false); return }
+    setTablesLoading(true)
+    window.electronAPI.databaseBrowser.tables(database).then(result => {
+      if (cancelled) return
+      if (!result.success || !result.data) throw new Error(result.error || '无法加载数据表')
+      setTables(result.data)
+      if (result.data.length) setRequest({ database, table: result.data[0], offset: 0, limit: 50 })
+    }).catch(error => {
+      if (!cancelled) setTablesError(String(error.message || error))
+    }).finally(() => { if (!cancelled) setTablesLoading(false) })
+    return () => { cancelled = true }
+  }, [database])
 
-  const totals = overview?.summary || {
-    databaseCount: 0,
-    tableCount: 0,
-    rowCount: 0,
-    resourceCount: 0
+  useEffect(() => {
+    let cancelled = false
+    setCell(null)
+    setPage(null)
+    setRowsError('')
+    if (!request) { setRowsLoading(false); return }
+    setRowsLoading(true)
+    window.electronAPI.databaseBrowser.readTable(request).then(result => {
+      if (cancelled) return
+      if (!result.success || !result.data) throw new Error(result.error || '读取记录失败')
+      setPage(result.data)
+    }).catch(error => {
+      if (!cancelled) setRowsError(String(error.message || error))
+    }).finally(() => { if (!cancelled) setRowsLoading(false) })
+    return () => { cancelled = true }
+  }, [request])
+
+  const visibleTables = useMemo(() => tables.filter(name => name.toLowerCase().includes(tableFilter.toLowerCase())), [tables, tableFilter])
+
+  function selectTable(table: string) {
+    setRequest({ database, table, offset: 0, limit: request?.limit || 50 })
+    setSearchInput('')
+    setTab('data')
   }
 
-  const totalDatabaseSize = useMemo(
-    () => (overview?.databases || []).reduce((sum, database) => sum + Number(database.size || 0), 0),
-    [overview]
-  )
+  function sort(column: string) {
+    if (!request) return
+    setRequest({ ...request, offset: 0, sortColumn: column, sortDirection: request.sortColumn === column && request.sortDirection !== 'desc' ? 'desc' : 'asc' })
+  }
 
   return (
     <div className="database-browser-page">
       <header className="database-browser-header">
         <div>
-          <h1>数据库浏览器</h1>
-          <p>只读查看当前微信账号的原始数据库概况</p>
+          <h1>数据库浏览器 <span className="db-readonly">只读</span></h1>
+          <p>选择数据表，浏览原始记录与字段结构</p>
         </div>
-        <button
-          className="database-browser-refresh"
-          type="button"
-          disabled={loading}
-          onClick={() => void loadOverview(true)}
-        >
-          <RefreshCw size={16} className={loading ? 'spinning' : ''} />
-          <span>刷新</span>
+        <button type="button" disabled={catalogLoading} onClick={() => setRevision(value => value + 1)}>
+          <RefreshCw size={16} className={catalogLoading ? 'spinning' : ''} />刷新数据库
         </button>
       </header>
-
-      <section className="database-browser-summary" aria-label="数据库概况">
-        <article>
-          <Database size={19} />
-          <span>数据库</span>
-          <strong>{totals.databaseCount.toLocaleString()}</strong>
-        </article>
-        <article>
-          <Table2 size={19} />
-          <span>表</span>
-          <strong>{totals.tableCount.toLocaleString()}</strong>
-        </article>
-        <article>
-          <Rows3 size={19} />
-          <span>行</span>
-          <strong>{totals.rowCount.toLocaleString()}</strong>
-        </article>
-        <article>
-          <Files size={19} />
-          <span>资源</span>
-          <strong>{totals.resourceCount.toLocaleString()}</strong>
-        </article>
-      </section>
-
-      {(loading || error) && (
-        <section className={`database-browser-status ${error ? 'error' : ''}`}>
-          <div className="database-browser-status-icon">
-            {error ? <Database size={21} /> : <RefreshCw size={21} className="spinning" />}
+      {catalogError && <div className="db-error" role="alert">{catalogError}<button onClick={() => setRevision(value => value + 1)}>重试</button></div>}
+      <div className="db-workspace">
+        <aside className="db-sidebar" aria-label="数据库和表">
+          <div className="db-sidebar-heading">
+            <Database size={16} /><strong>数据库</strong>
+            {catalog && <span>{catalog.databases.length}</span>}
           </div>
-          <div>
-            <strong>{error || progress?.message || '正在读取数据库概况'}</strong>
-            {!error && <span>{progress?.detail || '首次统计可能需要一些时间'}</span>}
-            {!error && loading && (
-              <div className="database-browser-progress">
-                <i style={{ width: `${percent}%` }} />
-              </div>
-            )}
+          {catalog && <div className="db-account" title={catalog.source.dbRoot}>{catalog.source.account}</div>}
+          <div className="db-tree">
+            {catalogLoading && <div className="db-hint" role="status">正在加载数据库…</div>}
+            {!catalogLoading && catalog?.databases.length === 0 && <div className="db-hint">没有找到数据库</div>}
+            {catalog?.databases.map(item => (
+              <section key={item.relativePath}>
+                <button className={database === item.relativePath ? 'db-database active' : 'db-database'}
+                  aria-expanded={database === item.relativePath} title={item.relativePath}
+                  onClick={() => { if (database !== item.relativePath) setDatabase(item.relativePath) }}>
+                  {database === item.relativePath ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  <Database size={16} />
+                  <span><strong>{item.name}</strong><small>{item.relativePath}</small></span>
+                </button>
+                {database === item.relativePath && (
+                  <div className="db-tables">
+                    {tablesLoading ? <div className="db-hint" role="status">正在读取表列表…</div> : tablesError ? (
+                      <div className="db-error" role="alert">{tablesError}<button onClick={() => setRevision(value => value + 1)}>重试</button></div>
+                    ) : (
+                      <>
+                        <label className="db-table-search"><Search size={14} /><input aria-label="筛选表名" placeholder="筛选表名…" value={tableFilter} onChange={event => setTableFilter(event.target.value)} /></label>
+                        {visibleTables.map(name => <button key={name} className={request?.table === name ? 'db-table active' : 'db-table'}
+                          aria-current={request?.table === name ? 'true' : undefined} title={name} onClick={() => selectTable(name)}>
+                          <Table2 size={14} /><span>{name}</span>
+                        </button>)}
+                        {!visibleTables.length && <div className="db-hint">{tables.length ? '没有匹配的数据表' : '该数据库没有数据表'}</div>}
+                      </>
+                    )}
+                  </div>
+                )}
+              </section>
+            ))}
           </div>
-        </section>
-      )}
-
-      {overview && (
-        <>
-          <section className="database-browser-source">
-            <div>
-              <span>当前账号</span>
-              <strong>{overview.source.account}</strong>
-            </div>
-            <div>
-              <span>数据库目录</span>
-              <strong title={overview.source.dbRoot}>{overview.source.dbRoot}</strong>
-            </div>
-            <div>
-              <span>数据库大小</span>
-              <strong>{formatBytes(totalDatabaseSize)}</strong>
-            </div>
-          </section>
-
-          <section className="database-browser-resources">
-            <div className="database-browser-section-heading">
-              <div>
-                <h2>资源</h2>
-                <p>按本地实际文件统计</p>
+        </aside>
+        <main className="db-main" aria-label="表内容">
+          {!request ? (
+            <div className="db-placeholder"><Table2 size={36} /><h2>选择一张表开始浏览</h2><p>左侧展开数据库，点击表名查看实际记录。</p></div>
+          ) : (
+            <>
+              <div className="db-table-heading"><div><small title={database}>{database}</small><h2 title={request.table}>{request.table}</h2></div>
+                <button disabled={rowsLoading} aria-label="刷新当前表" title="刷新当前表" onClick={() => setRequest({ ...request })}><RefreshCw size={16} className={rowsLoading ? 'spinning' : ''} /></button>
               </div>
-            </div>
-            <div className="database-browser-resource-grid">
-              <div><Image size={17} /><span>图片</span><strong>{overview.resources.images.toLocaleString()}</strong></div>
-              <div><Video size={17} /><span>视频</span><strong>{overview.resources.videos.toLocaleString()}</strong></div>
-              <div><File size={17} /><span>文件</span><strong>{overview.resources.files.toLocaleString()}</strong></div>
-            </div>
-          </section>
-
-          <section className="database-browser-databases">
-            <div className="database-browser-section-heading">
-              <div>
-                <h2>数据库与表</h2>
-                <p>展开数据库查看表名和行数</p>
+              <div className="db-tabs" role="tablist" aria-label="查看内容">
+                <button role="tab" aria-selected={tab === 'data'} onClick={() => setTab('data')}>数据</button>
+                <button role="tab" aria-selected={tab === 'schema'} onClick={() => setTab('schema')}>表结构</button>
               </div>
-              {overview.unreadableTableCount > 0 && (
-                <span className="database-browser-warning">
-                  {overview.unreadableTableCount} 张表未能统计行数
-                </span>
+              {tab === 'data' && <form className="db-toolbar" onSubmit={event => { event.preventDefault(); setRequest({ ...request, offset: 0, search: searchInput }) }}>
+                <label className="db-record-search"><Search size={16} /><input aria-label="搜索当前表的记录" placeholder="搜索当前表所有字段（回车查询）" maxLength={500} value={searchInput} onChange={event => setSearchInput(event.target.value)} /></label>
+                <button type="submit" disabled={rowsLoading}>查询</button>
+                {request.search && <button type="button" disabled={rowsLoading} onClick={() => { setSearchInput(''); setRequest({ ...request, offset: 0, search: '' }) }}>清除筛选</button>}
+              </form>}
+              {rowsError && <div className="db-error" role="alert">{rowsError}<button onClick={() => setRequest({ ...request })}>重试</button></div>}
+              {rowsLoading && <div className="db-hint" role="status"><RefreshCw size={16} className="spinning" />正在读取记录…</div>}
+              {!rowsLoading && !rowsError && page && (
+                <div className="db-grid-scroll" role="tabpanel" tabIndex={0} aria-label={tab === 'data' ? '数据记录，可横向滚动' : '字段结构'}>
+                  {tab === 'schema' ? (
+                    <table className="db-grid db-schema"><thead><tr><th>字段名</th><th>类型</th><th>主键顺序</th><th>NOT NULL</th><th>默认值</th></tr></thead>
+                      <tbody>{page.columns.map(column => <tr key={column.name}><td>{column.name}</td><td>{column.type || '未声明'}</td><td>{column.primaryKey || '—'}</td><td>{column.notNull ? '是' : '否'}</td><td><pre>{cellText(column.defaultValue)}</pre></td></tr>)}</tbody>
+                    </table>
+                  ) : (
+                    <table className="db-grid"><thead><tr><th className="db-row-number">#</th>{page.columns.map(column => (
+                      <th key={column.name} aria-sort={request.sortColumn === column.name ? request.sortDirection === 'desc' ? 'descending' : 'ascending' : 'none'}>
+                        <button onClick={() => sort(column.name)} title={'按 ' + column.name + ' 排序'}>
+                          {column.primaryKey > 0 && <KeyRound size={12} />}<span>{column.name}<small>{column.type || '未声明类型'}</small></span>
+                          {request.sortColumn === column.name && (request.sortDirection === 'desc' ? <ArrowDown size={14} /> : <ArrowUp size={14} />)}
+                        </button>
+                      </th>
+                    ))}</tr></thead>
+                    <tbody>{page.rows.map((row, index) => <tr key={page.offset + index}>
+                      <td className="db-row-number">{page.offset + index + 1}</td>
+                      {page.columns.map(column => <td key={column.name} className={row[column.name] == null ? 'db-null' : ''}>
+                        <button className={cell?.column === column.name && cell.row === page.offset + index + 1 ? 'db-cell selected' : 'db-cell'}
+                          aria-label={'查看第 ' + (page.offset + index + 1) + ' 行 ' + column.name + ' 的完整内容'}
+                          onClick={() => setCell({ column: column.name, value: row[column.name], row: page.offset + index + 1 })}>
+                          {cellText(row[column.name]).slice(0, 300)}
+                        </button>
+                      </td>)}
+                    </tr>)}</tbody></table>
+                  )}
+                  {tab === 'data' && !page.rows.length && <div className="db-placeholder"><h2>{request.search ? '没有匹配的记录' : page.offset ? '本页没有记录' : '这是一张空表'}</h2><p>{request.search ? '试试其他关键词，或清除筛选。' : '仍可切换到「表结构」查看字段。'}</p></div>}
+                </div>
               )}
-            </div>
-
-            <div className="database-browser-list">
-              {overview.databases.map((database) => {
-                const databaseRows = database.tables.reduce(
-                  (sum, table) => sum + (typeof table.rows === 'number' ? table.rows : 0),
-                  0
-                )
-                return (
-                  <details key={database.relativePath} className="database-browser-database">
-                    <summary>
-                      <span className="database-browser-db-icon"><HardDrive size={18} /></span>
-                      <span className="database-browser-db-name">
-                        <strong>{database.name}</strong>
-                        <em>{database.relativePath}</em>
-                      </span>
-                      <span className="database-browser-db-kind">{database.kind}</span>
-                      <span className="database-browser-db-stat">{database.tables.length} 表</span>
-                      <span className="database-browser-db-stat">{databaseRows.toLocaleString()} 行</span>
-                      <span className="database-browser-db-size">{formatBytes(database.size)}</span>
-                    </summary>
-                    <div className="database-browser-table-list">
-                      <div className="database-browser-table-head">
-                        <span>表名</span>
-                        <span>行数</span>
-                      </div>
-                      {database.tables.length > 0 ? database.tables.map(table => (
-                        <div className="database-browser-table-row" key={table.name}>
-                          <span>{table.name}</span>
-                          <strong>{table.rows === null ? '未读取' : table.rows.toLocaleString()}</strong>
-                        </div>
-                      )) : (
-                        <div className="database-browser-empty">没有发现可读取的数据表</div>
-                      )}
-                    </div>
-                  </details>
-                )
-              })}
-            </div>
-          </section>
-        </>
-      )}
+              {cell && tab === 'data' && <section className="db-cell-detail" aria-label="单元格完整内容">
+                <header><strong>第 {cell.row} 行 · {cell.column}</strong><button aria-label="关闭单元格详情" onClick={() => setCell(null)}><X size={16} /></button></header>
+                <pre tabIndex={0}>{cellText(cell.value)}</pre>
+              </section>}
+              <footer className="db-pagination">
+                <span>{page ? page.rows.length ? '第 ' + (page.offset + 1) + '–' + (page.offset + page.rows.length) + ' 条' : '0 条记录' : '—'}{request.search ? ' · 已筛选' : ''}</span>
+                <span className="db-cell-tip">点击单元格查看完整内容</span>
+                <label>每页 <select aria-label="每页记录数" value={request.limit || 50} disabled={rowsLoading} onChange={event => setRequest({ ...request, limit: Number(event.target.value), offset: 0 })}>
+                  <option value={50}>50 条</option><option value={100}>100 条</option><option value={200}>200 条</option>
+                </select></label>
+                <button aria-label="上一页" disabled={rowsLoading || !request.offset} onClick={() => setRequest({ ...request, offset: Math.max(0, (request.offset || 0) - (request.limit || 50)) })}><ChevronLeft size={16} /></button>
+                <span>第 {Math.floor((request.offset || 0) / (request.limit || 50)) + 1} 页</span>
+                <button aria-label="下一页" disabled={rowsLoading || !page?.hasMore} onClick={() => setRequest({ ...request, offset: (request.offset || 0) + (request.limit || 50) })}><ChevronRight size={16} /></button>
+              </footer>
+            </>
+          )}
+        </main>
+      </div>
     </div>
   )
 }

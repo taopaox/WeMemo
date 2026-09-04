@@ -16,6 +16,7 @@
     "vite.config.ts",
     "electron/**/*.ts",
     "electron/**/*.d.ts",
+    "shared/**/*.ts",
     "shared/**/*.json"
   ]
 }

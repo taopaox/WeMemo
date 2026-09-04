@@ -422,6 +422,15 @@ function Sidebar({ collapsed }: SidebarProps) {
             <span className="nav-label">年度报告</span>
           </NavLink>
 
+          <NavLink
+            to="/annual-report-v2"
+            className={`nav-item ${isActive('/annual-report-v2') ? 'active' : ''}`}
+            title={collapsed ? '年分析版本2' : undefined}
+          >
+            <Sparkles size={20} />
+            <span className="nav-label">年分析版本2</span>
+          </NavLink>
+
           {/* 我的足迹 */}
           <NavLink
             to="/footprint"

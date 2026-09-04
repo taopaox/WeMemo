@@ -1,5 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import vue from '@vitejs/plugin-vue'
+import tailwindcss from 'tailwindcss'
+import autoprefixer from 'autoprefixer'
 import electron from 'vite-plugin-electron'
 import { resolve } from 'path'
 
@@ -86,12 +89,15 @@ const exportWorkerElectronShimPlugin = () => {
 
 export default defineConfig({
   base: './',
+  define: { 'import.meta.client': 'true' },
+  css: { postcss: { plugins: [tailwindcss('./annual-v2/tailwind.config.cjs'), autoprefixer()] } },
   server: {
     port: 3000,
     strictPort: false  // 如果3000被占用，自动尝试下一个
   },
   build: {
     chunkSizeWarningLimit: 900,
+    rollupOptions: { input: { main: resolve(__dirname, 'index.html'), annualV2: resolve(__dirname, 'annual-v2/index.html') } },
     commonjsOptions: {
       ignoreDynamicRequires: true
     }
@@ -101,6 +107,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    vue(),
     electron([
       {
         entry: 'electron/main.ts',
@@ -139,6 +146,25 @@ export default defineConfig({
               ],
               output: {
                 entryFileNames: 'annualReportWorker.js',
+                codeSplitting: false
+              }
+            }
+          }
+        }
+      },
+      {
+        entry: 'electron/annualReportV2Worker.ts',
+        onstart: handleElectronOnStart,
+        vite: {
+          build: {
+            outDir: 'dist-electron',
+            rollupOptions: {
+              external: [
+                'koffi',
+                'fsevents'
+              ],
+              output: {
+                entryFileNames: 'annualReportV2Worker.js',
                 codeSplitting: false
               }
             }
@@ -283,7 +309,8 @@ export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom'],
     alias: {
-      '@': resolve(__dirname, 'src')
+      '@': resolve(__dirname, 'src'),
+      '~': resolve(__dirname, 'annual-v2')
     }
   }
 })

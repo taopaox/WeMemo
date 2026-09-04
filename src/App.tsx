@@ -43,6 +43,7 @@ const DatabaseBrowserPage = lazy(() => import('./pages/DatabaseBrowserPage'))
 const InsightInboxPage = lazy(() => import('./pages/InsightInboxPage'))
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'))
 const GroupAnalyticsPage = lazy(() => import('./pages/GroupAnalyticsPage'))
+const AnnualReportV2Page = lazy(() => import('./pages/AnnualReportV2Page'))
 const AnnualReportPage = lazy(() => import('./pages/AnnualReportPage'))
 const AnnualReportWindow = lazy(() => import('./pages/AnnualReportWindow'))
 const DualReportPage = lazy(() => import('./pages/DualReportPage'))
@@ -790,6 +791,7 @@ function App() {
                 <Route path="/analytics/view" element={<RouteStateRedirect to="/analytics/private/view" />} />
                 <Route path="/group-analytics" element={<RouteStateRedirect to="/analytics/group" />} />
                 <Route path="/annual-report" element={<AnnualReportPage />} />
+                <Route path="/annual-report-v2" element={<AnnualReportV2Page />} />
                 <Route path="/annual-report/view" element={<AnnualReportWindow />} />
                 <Route path="/dual-report" element={<DualReportPage />} />
                 <Route path="/dual-report/view" element={<DualReportWindow />} />
