@@ -4,6 +4,8 @@ export type ExportDateRangePreset =
   | 'yesterday'
   | 'last3days'
   | 'last7days'
+  | 'last2weeks'
+  | 'last3weeks'
   | 'last30days'
   | 'last1year'
   | 'last2years'
@@ -39,6 +41,8 @@ export const EXPORT_DATE_RANGE_PRESETS: Array<{
   { value: 'yesterday', label: '昨天' },
   { value: 'last3days', label: '最近3天' },
   { value: 'last7days', label: '最近一周' },
+  { value: 'last2weeks', label: '最近2周' },
+  { value: 'last3weeks', label: '最近3周' },
   { value: 'last30days', label: '最近30天' },
   { value: 'last1year', label: '最近一年' }
 ]
@@ -49,6 +53,8 @@ const PRESET_LABELS: Record<Exclude<ExportDateRangePreset, 'custom'>, string> = 
   yesterday: '昨天',
   last3days: '最近3天',
   last7days: '最近一周',
+  last2weeks: '最近2周',
+  last3weeks: '最近3周',
   last30days: '最近30天',
   last1year: '最近一年',
   last2years: '最近两年'
@@ -60,6 +66,8 @@ const LEGACY_PRESET_MAP: Record<string, Exclude<ExportDateRangePreset, 'custom'>
   yesterday: 'yesterday',
   last3days: 'last3days',
   last7days: 'last7days',
+  last2weeks: 'last2weeks',
+  last3weeks: 'last3weeks',
   last30days: 'last30days',
   last1year: 'last1year',
   last2years: 'last2years',
@@ -121,9 +129,18 @@ export const createDateRangeByPreset = (
     return { start, end }
   }
 
-  const daysBack = preset === 'last3days' ? 2 : preset === 'last7days' ? 6 : 29
+  const inclusiveDays: Record<
+    Exclude<ExportDateRangePreset, 'all' | 'custom' | 'today' | 'yesterday' | 'last1year' | 'last2years'>,
+    number
+  > = {
+    last3days: 3,
+    last7days: 7,
+    last2weeks: 14,
+    last3weeks: 21,
+    last30days: 30
+  }
   const start = new Date(baseStart)
-  start.setDate(start.getDate() - daysBack)
+  start.setDate(start.getDate() - (inclusiveDays[preset] - 1))
   return { start, end }
 }
 

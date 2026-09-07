@@ -71,14 +71,8 @@
 
 .export-date-range-preset-list {
   display: flex;
-  flex-wrap: nowrap;
-  gap: 4px;
-  overflow-x: auto;
-  padding-bottom: 2px;
-
-  &::-webkit-scrollbar {
-    height: 4px;
-  }
+  flex-wrap: wrap;
+  gap: 6px 4px;
 }
 
 .export-date-range-preset-item {
