@@ -37,19 +37,19 @@ export function registerAnnualReportV2(getConfig:()=>Config) {
         event.sender.once('destroyed',()=>{for(const key of jobs.keys())if(key.startsWith(`${id}:`))cleanupOwner(key);for(const [key,b] of batches)if(b.owner.startsWith(`${id}:`))batches.delete(key);watched.delete(id)})
       }
       if(method==='cancel') {cleanupOwner(owner);return {ok:true}}
-      if(method==='analyze') {
-        if(!validAnnualV2Year(args.year))throw new Error('请选择有效年份')
+      if(method==='analyze'||method==='years') {
+        if(method==='analyze'&&!validAnnualV2Year(args.year))throw new Error('请选择有效年份')
         const config=getConfig()
         if(!config.dbPath||!config.decryptKey||!config.myWxid)throw new Error('请先连接微信数据库')
         if(args.account!==config.myWxid)throw new Error('账号已切换，请重新打开年分析版本2')
         cleanupOwner(owner)
         return await new Promise(resolve=>{
-          const worker=new Worker(join(__dirname,'annualReportV2Worker.js'),{workerData:{...config,year:args.year,resourcesPath:app.isPackaged?join(process.resourcesPath,'resources'):join(app.getAppPath(),'resources'),userDataPath:app.getPath('userData')}})
+          const worker=new Worker(join(__dirname,'annualReportV2Worker.js'),{workerData:{...config,mode:method,year:args.year,resourcesPath:app.isPackaged?join(process.resourcesPath,'resources'):join(app.getAppPath(),'resources'),userDataPath:app.getPath('userData')}})
           let done=false
           const finish=(result:any)=>{if(done)return;done=true;clearTimeout(timer);jobs.delete(owner);worker.removeAllListeners();void worker.terminate();resolve(result)}
           const timer=setTimeout(()=>finish({ok:false,error:'统计超时，请稍后重试'}),14*60*1000)
           jobs.set(owner,{worker,cancel:()=>finish({ok:false,error:'报告生成已取消'})})
-          worker.on('message',msg=>{if(msg.type==='result')finish({ok:true,cards:msg.cards});else if(msg.type==='error')finish({ok:false,error:msg.error});else if(msg.type==='progress'&&!event.sender.isDestroyed())event.sender.send('annualReportV2:progress',{channel,...msg})})
+          worker.on('message',msg=>{if(msg.type==='result')finish({ok:true,cards:msg.cards,years:msg.years});else if(msg.type==='error')finish({ok:false,error:msg.error});else if(msg.type==='progress'&&!event.sender.isDestroyed())event.sender.send('annualReportV2:progress',{channel,...msg})})
           worker.on('error',error=>finish({ok:false,error:error.message}))
           worker.on('exit',code=>finish({ok:false,error:`报告线程提前退出（${code}）`}))
         })

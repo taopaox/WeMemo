@@ -400,7 +400,7 @@
             <span class="dd wrapped-number">{{ fmt(receivedChars) }} 字</span>
           </div>
           <div class="inset mcell">
-            <span class="dt">敲了</span>
+            <span class="dt">估算敲击</span>
             <span class="dd wrapped-number">{{ fmt(keyHits) }} 次</span>
           </div>
           <!-- 语音：发出 / 收到 两侧都要有，缺一侧就只留有数的那一侧 -->
@@ -1009,8 +1009,9 @@ const peakContact = computed(() => peakDay.value?.topContact || null)
 const peakContactAvatar = computed(() => resolveMediaUrl(peakContact.value?.avatarUrl))
 // 那天占全年多少：前端自己算，后端没这个字段
 const peakShare = computed(() => {
-  if (totalMessages.value <= 0 || peakCount.value <= 0) return ''
-  const p = (peakCount.value / totalMessages.value) * 100
+  const activityTotal = num(snap.value.annualHeatmap?.totalMessages)
+  if (activityTotal <= 0 || peakCount.value <= 0) return ''
+  const p = (peakCount.value / activityTotal) * 100
   return p >= 10 ? String(Math.round(p)) : p.toFixed(1)
 })
 // `08:14` → 分钟数；识别不了返回 -1

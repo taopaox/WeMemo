@@ -34,7 +34,7 @@ const makeContact = (username: string, displayName: string, avatarUrl: string, d
   group: username.endsWith('@chatroom'), sent: 0, received: 0, total: 0, replies: 0, replySum: 0, replySumCapped: 0, fastest: Infinity, slowest: 0,
   initiated: 0, approached: 0, night: 0, myNight: 0, nightSample: null as Row | null,
   last: null as { ts: number; sent: boolean } | null, prompt: null as number | null,
-  daily: Array(days).fill(0) as number[], dailySent: Array(days).fill(0) as number[], dailyReceived: Array(days).fill(0) as number[],
+  hours: Array(24).fill(0) as number[], daily: Array(days).fill(0) as number[], dailySent: Array(days).fill(0) as number[], dailyReceived: Array(days).fill(0) as number[],
   months: Array.from({ length: 12 }, monthStats)
 })
 export class AnnualV2Accumulator {
@@ -48,6 +48,8 @@ export class AnnualV2Accumulator {
   readonly sentCharsDaily: number[]
   readonly receivedCharsDaily: number[]
   readonly stickerDaily: number[]
+  readonly firstDaily = new Map<number, Row>()
+  readonly lastDaily = new Map<number, Row>()
   readonly phrases = new Map<string, number>()
   readonly phraseSamples = new Map<string, Row>()
   readonly stickers = new Map<string, Row>()
@@ -93,7 +95,7 @@ export class AnnualV2Accumulator {
       if (md5) {
         let times = this.stickerHistory.get(md5)
         if (!times) { times = new Set();this.stickerHistory.set(md5,times) }
-        times.add(Math.floor(ts / 86400))
+        times.add(Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000))
       }
     }
     if (d.getFullYear() !== this.year) return
@@ -101,11 +103,13 @@ export class AnnualV2Accumulator {
       if (!c.group && /现在可以开始聊天了|你们已经是好友/.test(content)) this.added.add(username)
       return
     }
-    c.total++; this.daily[doy]++; c.daily[doy]++
+    c.total++; c.hours[hour]++; this.daily[doy]++; c.daily[doy]++
     const m = c.months[month];m.total++;m.days.add(doy);m.hours.add(Math.floor(hour / 6))
     if (sent) { this.sent++;c.sent++;m.sent++;this.dailySent[doy]++;c.dailySent[doy]++;this.matrix[weekday][hour]++ }
     else { this.received++;c.received++;m.received++;this.dailyReceived[doy]++;c.dailyReceived[doy]++ }
     const moment = { username, displayName: c.displayName, maskedName: c.maskedName, avatarUrl: c.avatarUrl, date: dateKey(d), time: `${pad(hour)}:${pad(d.getMinutes())}`, content: type === 1 ? content.slice(0, 180) : ({ 3: '[图片]', 34: '[语音]', 43: '[视频]', 47: '[表情包]' } as Row)[type] || '[消息]', timestamp: ts, fromMe: sent, direction: sent ? 'sent' : 'received' }
+    if (!this.firstDaily.has(doy) || ts < this.firstDaily.get(doy)!.timestamp) this.firstDaily.set(doy, moment)
+    if (!this.lastDaily.has(doy) || ts > this.lastDaily.get(doy)!.timestamp) this.lastDaily.set(doy, moment)
     if (sent) {
       const sec = hour * 3600 + d.getMinutes() * 60 + d.getSeconds()
       if (!this.earliest || sec < this.earliest.secondOfDay) this.earliest = { ...moment, secondOfDay: sec }
@@ -163,7 +167,7 @@ export class AnnualV2Accumulator {
     const privateContacts = [...this.contacts.values()].filter(c => !c.group && c.total)
     const profile = (c: Contact) => ({ username: c.username, displayName: c.displayName, maskedName: c.maskedName, avatarUrl: c.avatarUrl })
     const longest = (a: number[]) => { let max = 0, run = 0;for(const n of a) { run = n ? run + 1 : 0;max = Math.max(max,run) }return max }
-    const detail = (c: Contact) => ({ ...profile(c), totalMessages: c.total, messages: c.sent, outgoingMessages: c.sent, incomingMessages: c.received, replyCount: c.replies, avgReplySeconds: c.replies ? c.replySum/c.replies : null, fastestReplySeconds: c.replies ? c.fastest : null, slowestReplySeconds: c.replies ? c.slowest : null, longestStreakDays: longest(c.daily) })
+    const detail = (c: Contact) => ({ ...profile(c), totalMessages: c.total, peakHour: bestIndex(c.hours), messages: c.sent, outgoingMessages: c.sent, incomingMessages: c.received, replyCount: c.replies, avgReplySeconds: c.replies ? c.replySum/c.replies : null, fastestReplySeconds: c.replies ? c.fastest : null, slowestReplySeconds: c.replies ? c.slowest : null, longestStreakDays: longest(c.daily) })
     const totals = [...privateContacts].sort((a,b)=>b.total-a.total)
     const buddies = privateContacts.filter(c=>c.replies).sort((a,b)=>Math.log1p(Math.min(b.sent,b.received))/(1+b.replySumCapped/b.replies/1800)-Math.log1p(Math.min(a.sent,a.received))/(1+a.replySumCapped/a.replies/1800)||a.username.localeCompare(b.username))
     const peak = bestIndex(this.daily), peakDate = new Date(this.year,0,peak+1)
@@ -176,7 +180,7 @@ export class AnnualV2Accumulator {
     const topKind = top(this.kindCounts,1)[0]
     const highlights = [['sent_chars_max',this.sentCharsDaily],['received_chars_max',this.receivedCharsDaily],['sent_messages_max',this.dailySent],['received_messages_max',this.dailyReceived],['sticker_messages_max',this.stickerDaily]].map(([key,values])=>({key,doy:bestIndex(values as number[]),count:Math.max(...values as number[])})).filter(x=>x.count>0)
     const annualHeatmap = {year:this.year,days:this.days,direction:'both',totalMessages:this.sent+this.received,activeDays,dailyCounts:this.daily,highlights}
-    const peakDay = this.daily[peak] ? {date:dateKey(peakDate),count:this.daily[peak],weekdayName:weekdays[(peakDate.getDay()+6)%7],multiple:Number((this.daily[peak]/((this.sent+this.received)/this.days||1)).toFixed(1)),topContact:peakContact?{...profile(peakContact),count:peakContact.daily[peak],messages:peakContact.daily[peak]}:null}:null
+    const peakDay = this.daily[peak] ? {date:dateKey(peakDate),count:this.daily[peak],firstTime:this.firstDaily.get(peak)?.time||'',firstText:this.firstDaily.get(peak)?.content||'',lastTime:this.lastDaily.get(peak)?.time||'',lastText:this.lastDaily.get(peak)?.content||'',weekdayName:weekdays[(peakDate.getDay()+6)%7],multiple:Number((this.daily[peak]/((this.sent+this.received)/this.days||1)).toFixed(1)),topContact:peakContact?{...profile(peakContact),count:peakContact.daily[peak],messages:peakContact.daily[peak]}:null}:null
     const mostSent = [...privateContacts].sort((a,b)=>b.sent-a.sent)[0]
     const mostGroup = [...this.contacts.values()].filter(c=>c.group&&c.sent).sort((a,b)=>b.sent-a.sent)[0]
     const overview = {year:this.year,totalMessages:this.sent,activeDays,addedFriends:this.added.size,messagesPerDay:this.sent/this.days,sentMediaCount:(this.kindCounts.get('image')||0)+(this.kindCounts.get('video')||0),sentStickerCount:this.stickerCount,mostActiveHour:this.sent?bestIndex(hours):null,mostActiveWeekdayName:this.sent?weekdays[bestIndex(weekdayCounts)]:'',topContact:mostSent?{...profile(mostSent),messages:mostSent.sent}:null,topGroup:mostGroup?{...profile(mostGroup),messages:mostGroup.sent}:null,topKind:topKind?{kind:topKind[0],label:typeLabels[topKind[0]],count:topKind[1],ratio:topKind[1]/(this.sent||1)}:null,topPhrase:phrases[0]?{phrase:phrases[0].word,count:phrases[0].count}:null,peakDay,annualHeatmap}
@@ -208,9 +212,9 @@ export class AnnualV2Accumulator {
     })
     const champion=top(winners,1)[0]
     const monthly={year:this.year,months,summary:{monthsWithWinner:months.filter(m=>m.winner).length,topChampion:champion?{...profile(this.contacts.get(champion[0])!),monthsWon:champion[1]}:null}}
-    const keyword={year:this.year,topKeyword:phrases[0]||null,keywords:phrases,bubbleMessages:phrases.slice(0,30).map(p=>({text:p.word,count:p.count,...this.phraseSamples.get(p.word)})),examples:phrases.slice(0,20).map(p=>({word:p.word,...this.phraseSamples.get(p.word)})),meta:{matchedCandidates:sum([...this.phrases.values()])}}
+    const keyword={year:this.year,topKeyword:phrases[0]||null,keywords:phrases,bubbleMessages:phrases.slice(0,30).map(p=>({text:p.word,count:p.count,...this.phraseSamples.get(p.word)})),examples:phrases.slice(0,20).map(p=>({word:p.word,...this.phraseSamples.get(p.word)})),meta:{matchedCandidates:sum([...this.phrases.values()]),uniquePhrases:this.phrases.size}}
     const topStickers=[...this.stickers.values()].sort((a,b)=>b.count-a.count).slice(0,100).map(s=>({...s,ratio:s.count/(this.stickerCount||1)}))
-    const startDay=Math.floor(new Date(this.year,0,1).getTime()/86400000)
+    const startDay=Math.floor(Date.UTC(this.year,0,1)/86400000)
     const newStickers:Row[]=[],revivedStickers:Row[]=[]
     for(const sticker of this.stickers.values()) {
       const history=[...(this.stickerHistory.get(sticker.md5)||[])].sort((a,b)=>a-b)

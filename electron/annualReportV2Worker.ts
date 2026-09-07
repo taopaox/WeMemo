@@ -3,7 +3,7 @@ import { wcdbService } from './services/wcdbService'
 import { resolveAccountDir } from './services/accountDirResolver'
 import { AnnualV2Accumulator, annualV2SessionAllowed } from './services/annualReportV2Stats'
 
-const config = workerData as {year:number;dbPath:string;decryptKey:string;myWxid:string;resourcesPath:string;userDataPath:string}
+const config = workerData as {mode?:'years'|'analyze';year:number;dbPath:string;decryptKey:string;myWxid:string;resourcesPath:string;userDataPath:string}
 process.env.WEMEMO_WORKER = '1'
 process.env.WCDB_RESOURCES_PATH = config.resourcesPath
 wcdbService.setPaths(config.resourcesPath,config.userDataPath)
@@ -13,6 +13,26 @@ async function run() {
   const sessions = await wcdbService.getSessions()
   if (!sessions.success || !sessions.sessions) throw new Error(sessions.error || '无法读取会话')
   const ids = [...new Set((sessions.sessions as any[]).map(s=>String(s.username||s.user_name||s.userName||'')))].filter(id=>annualV2SessionAllowed(id,config.myWxid))
+  if (config.mode === 'years') {
+    if (!ids.length) { parentPort?.postMessage({type:'result',years:[]});return }
+    const available = await wcdbService.getAvailableYears(ids)
+    if (available.success && Array.isArray(available.data)) {
+      parentPort?.postMessage({type:'result',years:available.data})
+      return
+    }
+    // Older native libraries may lack the aggregate query; use actual message dates.
+    const years = new Set<number>()
+    for (const id of ids) {
+      const dates = await wcdbService.getMessageDates(id)
+      if (!dates.success || !dates.dates) throw new Error(dates.error || '无法读取可用年份')
+      for (const date of dates.dates) {
+        const year = Number(String(date).slice(0,4))
+        if (Number.isInteger(year) && year >= 2000 && year <= new Date().getFullYear()) years.add(year)
+      }
+    }
+    parentPort?.postMessage({type:'result',years:[...years]})
+    return
+  }
   const contacts = await wcdbService.getContactsCompact(ids)
   const profiles = new Map((contacts.contacts || []).map(c=>[String(c.username||c.user_name||c.userName),c]))
   const avatars = await wcdbService.getAvatarUrls(ids)

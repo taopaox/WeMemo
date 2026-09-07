@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import annualV2Manifests from '../../shared/annualReportV2.json'
 const validAnnualV2Year = (year: number) => Number.isInteger(year) && year >= 2000 && year <= new Date().getFullYear()
@@ -17,7 +17,7 @@ export default function AnnualReportV2Page() {
     return url.href
   }, [channel])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     let disposed = false
     let account = ''
     let years: number[] = []
@@ -42,8 +42,11 @@ export default function AnnualReportV2Page() {
     const receive = async (event: MessageEvent) => {
       const frame = iframe.current
       if (!frame || event.source !== frame.contentWindow) return
+      const localFile = new URL(frameUrl).protocol === 'file:'
       const expectedOrigin = new URL(frameUrl).origin
-      if (event.origin !== expectedOrigin) return
+      // Electron serializes file origins as file://; browsers may serialize them as null.
+      // The exact iframe window and per-mount channel are checked as well.
+      if (localFile ? !['null', 'file://'].includes(event.origin) : event.origin !== expectedOrigin) return
       const msg = event.data
       if (msg?.namespace !== 'wememo-annual-v2' || msg.channel !== channel || msg.type !== 'request' || typeof msg.id !== 'string') return
       const args = msg.args || {}
@@ -60,9 +63,9 @@ export default function AnnualReportV2Page() {
           snapshot = null
           await invoke('cancel')
           setStatus('正在读取可用年份…')
-          const available = await window.electronAPI.annualReport.getAvailableYears()
-          if (!available.success) throw new Error(available.error || '无法读取年份')
-          years = (available.data || []).filter(validAnnualV2Year).sort((a: number,b: number)=>b-a)
+          const available = await invoke('years', { account })
+          if (!available.ok) throw new Error(available.error || '无法读取年份')
+          years = (available.years || []).filter(validAnnualV2Year).sort((a: number,b: number)=>b-a)
           if (!years.length) throw new Error('当前账号没有可分析的聊天记录')
           selectedYear = years.includes(Number(args.year)) ? Number(args.year) : years[0]
           result = { account, year: selectedYear, availableYears: years, cards: annualV2Manifests }

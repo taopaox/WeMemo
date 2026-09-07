@@ -89,3 +89,5 @@ wememo-web-offical
 /scripts/syncWedecrypt.py
 /scripts/syncWelive.py
 /WeLive
+
+/dist-annual-v2/

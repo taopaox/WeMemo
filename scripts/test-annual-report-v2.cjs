@@ -36,11 +36,33 @@ try {
   assert.equal(data(4).months.length,12)
   assert.equal(data(6).topKeyword.word,'早上好')
   assert.equal(data(6).topKeyword.count,2)
+  assert.equal(data(6).meta.uniquePhrases, 2)
   assert.equal(data(7).snapshot.totalMessages,data(0).totalMessages)
   assert.equal(annualV2SessionAllowed('gh_test','self'),false)
   assert.equal(annualV2SessionAllowed('self','self'),false)
   assert.equal(annualV2SessionAllowed('test@chatroom','self'),true)
   assert.equal(decodeAnnualContent('12345678901234567890'),'12345678901234567890')
   assert.equal(new AnnualV2Accumulator(2023,'self').finish()[0].data.annualHeatmap.dailyCounts.length,365)
+  assert.equal(data(3).bestBuddy.peakHour, 8)
+  assert.equal(data(0).peakDay.firstText, '你好')
+  assert.equal(data(0).peakDay.lastText, '早上好')
+  const emojiStats = new AnnualV2Accumulator(2024, 'self')
+  emojiStats.addContact('friend')
+  const sticker = (year, month, day, md5) => emojiStats.add('friend', {
+    create_time: new Date(year, month-1, day, 12).getTime()/1000,
+    computed_is_send: 1, local_type: 47, message_content: `<emoji md5="${md5}"/>`
+  })
+  sticker(2023, 1, 1, 'a'.repeat(32))
+  sticker(2024, 2, 1, 'a'.repeat(32))
+  sticker(2024, 2, 2, 'b'.repeat(32))
+  const emojiCard = emojiStats.finish().find(c=>c.id===5).data
+  assert.equal(emojiCard.sentStickerCount, 2)
+  assert.equal(emojiCard.newStickerCountThisYear, 1)
+  assert.equal(emojiCard.revivedStickerCount, 1)
+  assert.equal(emojiCard.uniqueStickerTypeCount, 2)
+  const boundaryStats = new AnnualV2Accumulator(2024, 'self')
+  boundaryStats.addContact('friend')
+  for (const date of [new Date(2023,11,31,23), new Date(2024,0,1,1)]) boundaryStats.add('friend', {create_time:date.getTime()/1000,computed_is_send:1,local_type:47,message_content:`<emoji md5="${'c'.repeat(32)}"/>`})
+  assert.equal(boundaryStats.finish().find(c=>c.id===5).data.newStickerCountThisYear, 0)
   console.log('Annual V2: date boundaries, leap year, direction, group scope, replies, monthly cards and snapshot passed.')
 } finally { rmSync(dir,{recursive:true,force:true}) }

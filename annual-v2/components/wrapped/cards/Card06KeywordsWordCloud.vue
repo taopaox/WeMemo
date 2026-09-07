@@ -183,7 +183,7 @@
         </transition>
 
         <!-- 唯一的控件：浮在底部，不参与书的居中 -->
-        <div v-if="phase === 'cloud'" class="kw-replay">
+        <div v-if="phase === 'cloud' && !exportMode" class="kw-replay">
           <button type="button" class="kw-chip" @click="replay">再看一遍</button>
         </div>
       </div>
