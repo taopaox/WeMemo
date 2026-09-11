@@ -93,7 +93,7 @@
       "repo": "WeMemo",
       "releaseType": "release"
     },
-    "productName": "WeMemo",
+    "productName": "WeFlow",
     "artifactName": "${productName}-${version}-Setup.${ext}",
     "directories": {
       "output": "release"
